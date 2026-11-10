@@ -338,7 +338,18 @@ def _device_ref(device: DeviceInput) -> dict[str, Any]:
 
 
 def _sort_devices(devices: list[DeviceInput]) -> list[DeviceInput]:
-    return sorted(devices, key=lambda d: (d.disabled, d.name.lower(), d.device_id))
+    """Enabled first, then the device with the most entities, then by name."""
+    return sorted(
+        devices, key=lambda d: (d.disabled, -len(d.entities), d.name.lower(), d.device_id)
+    )
+
+
+def _same_integration_groups(devices: list[DeviceInput]) -> list[DeviceInput]:
+    """Return the devices that share their integration with another one."""
+    by_domain: dict[str | None, list[DeviceInput]] = defaultdict(list)
+    for device in devices:
+        by_domain[device.domain].append(device)
+    return [d for group in by_domain.values() if len(group) > 1 for d in group]
 
 
 # --------------------------------------------------------------------------
@@ -420,9 +431,10 @@ def build_table(snap: Snapshot) -> Table:
             continue
 
         sources: list[str] = []
+        router_device = router_device_by_mac.get(mac)
         if registry_devices:
             sources.append(SRC_REGISTRY)
-        if tracker:
+        if tracker or router_device:
             sources.append(SRC_ROUTER)
         if dhcp_item:
             sources.append(SRC_DHCP)
@@ -437,23 +449,30 @@ def build_table(snap: Snapshot) -> Table:
         )
         if hostname is None:
             hostname = hist.get("hostname")
-        seen_by_router = tracker is not None or bool(hist.get("last_seen"))
+        # A router-side device means the router integration tracks this MAC,
+        # even while its tracker has no state (disabled, restored, unavailable)
+        seen_by_router = (
+            tracker is not None or router_device is not None or bool(hist.get("last_seen"))
+        )
 
         device: DeviceInput | None = None
         confidence = CONF_UNMATCHED
         candidates: list[DeviceInput] = []
-        duplicate = False
+        linked: list[DeviceInput] = []
+        duplicates: list[DeviceInput] = []
         label = override.get("label") or None
 
         if override and (override.get("device_id") in devices_by_id or label is not None):
             device = devices_by_id.get(override.get("device_id") or "")
             confidence = CONF_MANUAL
         elif registry_devices:
+            # Several integrations may declare the same MAC (one device per
+            # config entry since Home Assistant 2026.10): they are all linked.
+            # Only two devices of the same integration are suspicious.
             device = registry_devices[0]
+            linked = registry_devices[1:]
+            duplicates = _same_integration_groups(registry_devices)
             confidence = CONF_TRACKER_REGISTRY if seen_by_router else CONF_REGISTRY
-            if len(registry_devices) > 1:
-                duplicate = True
-                candidates = registry_devices
         else:
             found = entry_devices(entries_by_mac.get(mac, []))
             if len(found) == 1:
@@ -479,7 +498,15 @@ def build_table(snap: Snapshot) -> Table:
                     else:
                         candidates.extend(ip_found)
 
-        router_device = router_device_by_mac.get(mac)
+        if override and registry_devices:
+            linked = [
+                d for d in registry_devices if device is None or d.device_id != device.device_id
+            ]
+        router_trackers = (
+            [e for e in router_device.entities if e.startswith("device_tracker.")]
+            if router_device
+            else []
+        )
         unique_candidates = {c.device_id: c for c in candidates}
         row: dict[str, Any] = {
             "mac": mac,
@@ -488,7 +515,9 @@ def build_table(snap: Snapshot) -> Table:
             "ip": ip,
             "hostname": hostname,
             "online": bool(tracker and tracker.online),
-            "tracker": tracker.entity_id if tracker else None,
+            "tracker": tracker.entity_id
+            if tracker
+            else (router_trackers[0] if router_trackers else None),
             "tracker_platform": tracker.platform if tracker else None,
             "connection": tracker.connection if tracker else None,
             "router_device_id": router_device.device_id if router_device else None,
@@ -501,7 +530,9 @@ def build_table(snap: Snapshot) -> Table:
             "label": label,
             "confidence": confidence,
             "sources": sources,
-            "duplicate": duplicate,
+            "linked_devices": [{**_device_ref(d), "entities": list(d.entities)} for d in linked],
+            "duplicate": bool(duplicates),
+            "duplicate_devices": [_device_ref(d) for d in duplicates],
             "candidates": [_device_ref(c) for c in unique_candidates.values()],
             "seen_by_router": seen_by_router,
             "first_seen": hist.get("first_seen"),
@@ -531,7 +562,9 @@ def build_table(snap: Snapshot) -> Table:
         if host := normalize_hostname(row["hostname"]):
             table.by_hostname.setdefault(host, []).append(mac)
         if row["duplicate"]:
-            table.duplicates.append({"mac": mac, "devices": [dict(c) for c in row["candidates"]]})
+            table.duplicates.append(
+                {"mac": mac, "devices": [dict(d) for d in row["duplicate_devices"]]}
+            )
 
     for ip_value, entries in entries_by_ip.items():
         table.ip_devices[ip_value] = [_device_ref(d) for d in entry_devices(entries)]
@@ -594,6 +627,7 @@ def summarize(table: Table) -> dict[str, Any]:
     return {
         "known": len(rows),
         "matched": sum(1 for r in rows if r["device_id"]),
+        "router_linked": sum(1 for r in rows if r["device_id"] and r["router_device_id"]),
         "labelled": sum(1 for r in rows if r["label"] and not r["device_id"]),
         "orphans": sum(1 for r in rows if is_orphan(r)),
         "unseen_devices": sum(1 for r in rows if is_unseen_device(r)),

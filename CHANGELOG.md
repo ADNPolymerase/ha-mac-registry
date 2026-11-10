@@ -1,5 +1,16 @@
 # Changelog
 
+## 0.1.1 - 2026-11-10
+
+### Fixed
+
+- **A router client and the integration's device sharing its MAC are now linked instead of reported as duplicates.** Since Home Assistant 2026.10 a router integration registers its own device, with the same MAC, for each client another integration knows. That device was only recognised while its tracker had a live router state, so a restored, unavailable or removed tracker raised the "MAC declared by several devices" repair for a normal pair. It is now recognised by what it is: a device of a router integration that carries nothing but device trackers. The row is `tracker+registry`, keeps the router device in `router_device_id` and shows its tracker even without a state.
+
+### Changed
+
+- **Devices of different integrations sharing a MAC are linked, not flagged.** The device with the most entities leads the row and the others are listed in `linked_devices`, with their entities. The duplicate repair is now only raised when two devices of the same integration declare the same MAC.
+- `sensor.mac_registry_summary` gains `router_linked`: the MACs for which the router side and an integration's device are linked. The CSV export gains a `linked_devices` column.
+
 ## 0.1.0 - 2026-11-10
 
 First release.

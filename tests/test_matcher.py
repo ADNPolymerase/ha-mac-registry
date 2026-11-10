@@ -253,8 +253,10 @@ def test_ambiguous_candidates_are_not_matched() -> None:
 def test_duplicates_label_and_random() -> None:
     """Duplicates are flagged, labels clear orphans, random MACs can be hidden."""
     devices = [
-        _device("cloud", macs=("00:00:5e:00:53:70",), domain="tuya"),
+        _device("cloud", macs=("00:00:5e:00:53:70",), domain="tuya", entities=("switch.a",)),
         _device("local", macs=("00:00:5e:00:53:70",), domain="localtuya"),
+        _device("lamp", macs=("00:00:5e:00:53:71",), domain="tuya"),
+        _device("lamp_copy", macs=("00:00:5e:00:53:71",), domain="tuya"),
     ]
     trackers = [
         _tracker("02:00:5e:00:53:40", "192.0.2.40"),
@@ -263,10 +265,16 @@ def test_duplicates_label_and_random() -> None:
     ]
     overrides = {"00:00:5e:00:53:42": {"device_id": None, "label": "Guest laptop"}}
     table = build_table(Snapshot(devices=devices, trackers=trackers, overrides=overrides))
-    dup = table.by_mac["00:00:5e:00:53:70"]
+    # Different integrations sharing a MAC: linked, the richest device first
+    shared = table.by_mac["00:00:5e:00:53:70"]
+    assert shared["duplicate"] is False
+    assert shared["device_id"] == "cloud"
+    assert [d["device_id"] for d in shared["linked_devices"]] == ["local"]
+    # Same integration twice: duplicate
+    dup = table.by_mac["00:00:5e:00:53:71"]
     assert dup["duplicate"] is True
-    assert {c["integration"] for c in dup["candidates"]} == {"tuya", "localtuya"}
-    assert table.duplicates[0]["mac"] == "00:00:5e:00:53:70"
+    assert {d["device_id"] for d in dup["duplicate_devices"]} == {"lamp", "lamp_copy"}
+    assert [d["mac"] for d in table.duplicates] == ["00:00:5e:00:53:71"]
     labelled = table.by_mac["00:00:5e:00:53:42"]
     assert labelled["confidence"] == "manual"
     assert labelled["label"] == "Guest laptop"

@@ -125,6 +125,29 @@ def add_tracker(
     return entity.entity_id
 
 
+def add_router_device(
+    hass: HomeAssistant, sc: Scenario, mac: str, name: str, tracker: str | None = None
+) -> str:
+    """Add the router-side device of a client, with a stateless tracker or none."""
+    router = sc.entries["tplink_router"]
+    device = dr.async_get(hass).async_get_or_create(
+        config_entry_id=router.entry_id,
+        connections={(dr.CONNECTION_NETWORK_MAC, mac)},
+        name=name,
+    )
+    if tracker:
+        entity = er.async_get(hass).async_get_or_create(
+            "device_tracker",
+            "tplink_router",
+            mac,
+            suggested_object_id=tracker,
+            config_entry=router,
+            device_id=device.id,
+        )
+        hass.states.async_set(entity.entity_id, "unavailable", {"restored": True})
+    return device.id
+
+
 async def async_setup_scenario(hass: HomeAssistant) -> Scenario:
     """Create a small but representative inventory."""
     sc = Scenario()
@@ -205,7 +228,7 @@ async def async_setup_scenario(hass: HomeAssistant) -> Scenario:
         entities=("light.example_light",),
     )
 
-    # Same appliance through two integrations -> duplicate
+    # Same appliance through two integrations -> linked together, not a duplicate
     localtuya = add_entry(hass, sc, "localtuya")
     add_device(
         hass,
@@ -214,6 +237,7 @@ async def async_setup_scenario(hass: HomeAssistant) -> Scenario:
         tuya,
         "Example Heater (cloud)",
         connections={(dr.CONNECTION_NETWORK_MAC, "00:00:5e:00:53:70")},
+        entities=("climate.example_heater",),
     )
     add_device(
         hass,
@@ -223,6 +247,52 @@ async def async_setup_scenario(hass: HomeAssistant) -> Scenario:
         "Example Heater (local)",
         connections={(dr.CONNECTION_NETWORK_MAC, "00005e005370")},
     )
+
+    # Same MAC twice in one integration (two config entries) -> duplicate
+    tuya_again = MockConfigEntry(domain="tuya", data={})
+    tuya_again.add_to_hass(hass)
+    add_device(
+        hass,
+        sc,
+        "lamp",
+        tuya,
+        "Example Lamp",
+        connections={(dr.CONNECTION_NETWORK_MAC, "00:00:5e:00:53:71")},
+    )
+    add_device(
+        hass,
+        sc,
+        "lamp_copy",
+        tuya_again,
+        "Example Lamp (copy)",
+        connections={(dr.CONNECTION_NETWORK_MAC, "00:00:5e:00:53:71")},
+    )
+
+    # Home Assistant 2026.10+: the router integration registers its own device
+    # with the MAC another integration declares. Its tracker may have no usable
+    # state (restored, unavailable) or may be gone altogether.
+    gree = add_entry(hass, sc, "gree")
+    add_device(
+        hass,
+        sc,
+        "ac",
+        gree,
+        "Example AC",
+        connections={(dr.CONNECTION_NETWORK_MAC, "00:00:5e:00:53:a1")},
+        entities=("climate.example_ac",),
+    )
+    add_router_device(hass, sc, "00:00:5e:00:53:a1", "Example AC", tracker="example_ac")
+    wol = add_entry(hass, sc, "wake_on_lan")
+    add_device(
+        hass,
+        sc,
+        "pc",
+        wol,
+        "Example PC",
+        connections={(dr.CONNECTION_NETWORK_MAC, "00:00:5e:00:53:a2")},
+        entities=("switch.example_pc",),
+    )
+    add_router_device(hass, sc, "00:00:5e:00:53:a2", "00-00-5E-00-53-A2")
 
     # Zigbee device: IEEE address, not a MAC
     z2m = add_entry(hass, sc, "mqtt")

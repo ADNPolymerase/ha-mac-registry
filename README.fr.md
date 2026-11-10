@@ -57,14 +57,14 @@ Règles :
 
 - Les MAC sont normalisées (`aa:bb:cc:dd:ee:ff`) quel que soit le format d'origine (`AA-BB-…`, sans séparateur, `aabb.ccdd.eeff`, `_`). Les adresses IEEE Zigbee (`0x…`) sont ignorées. Les MAC Bluetooth ont leur propre ligne (`mac_type: bluetooth`).
 - Un rapprochement `hostname`, `ip` ou `discovery` n'est fait que si le **candidat est unique**. Sinon la ligne reste `unmatched` avec ses `candidates`.
-- L'appareil que l'intégration routeur crée pour son tracker ne compte pas comme rapproché (il figure dans `router_device_id`).
-- Depuis Home Assistant 2026.10, deux intégrations peuvent déclarer la même MAC sur deux appareils distincts. MAC Registry le signale (`duplicate: true` et une réparation).
+- L'appareil que l'intégration routeur enregistre pour son propre tracker n'est pas un rapprochement à lui seul : c'est le côté routeur du lien, conservé dans `router_device_id`, et la ligne pointe vers l'appareil de l'intégration qui déclare la même MAC.
+- Depuis Home Assistant 2026.10, plusieurs intégrations peuvent déclarer la même MAC, chacune sur son propre appareil. Ils sont reliés sur une seule ligne : l'appareil qui a le plus d'entités vient en tête et les autres figurent dans `linked_devices`. Seuls deux appareils de la **même** intégration qui partagent une MAC sont signalés (`duplicate: true` et une réparation).
 - Config entries : seules les clés `host` et `ip_address` de `data` sont lues, ainsi que `unique_id`. Rien d'autre n'est lu, journalisé ou exposé (mots de passe compris).
 - DHCP : lu via l'API publique `homeassistant.components.dhcp.async_discovered_service_info`. La source se désactive seule si elle n'est pas disponible. Zeroconf n'expose pas d'API publique équivalente et n'est pas utilisé.
 
 ## Capteur
 
-`sensor.mac_registry_summary` : nombre de MAC connues. Les attributs donnent `matched`, `orphans` (vues par le routeur sans appareil Home Assistant), `unseen_devices` (MAC d'appareils jamais vues par le routeur, Bluetooth et Zigbee exclus), `random`, `duplicates`, `by_confidence`, `dhcp_source`, ainsi que des listes courtes (`orphan_list`, `unseen_device_list`, `duplicate_list`). Les attributs restent sous 16 ko et les listes sont exclues du recorder.
+`sensor.mac_registry_summary` : nombre de MAC connues. Les attributs donnent `matched`, `router_linked` (côté routeur relié à l'appareil d'une intégration), `orphans` (vues par le routeur sans appareil Home Assistant), `unseen_devices` (MAC d'appareils jamais vues par le routeur, Bluetooth et Zigbee exclus), `random`, `duplicates`, `by_confidence`, `dhcp_source`, ainsi que des listes courtes (`orphan_list`, `unseen_device_list`, `duplicate_list`). Les attributs restent sous 16 ko et les listes sont exclues du recorder.
 
 ## Actions
 
@@ -137,7 +137,7 @@ actions:
 ## Réparations
 
 - Une seule issue groupée pour les MAC orphelines non aléatoires vues au moins 3 jours distincts. Un libellé manuel retire la MAC de la liste.
-- Une issue groupée quand plusieurs appareils déclarent la même MAC.
+- Une issue groupée quand plusieurs appareils de la même intégration déclarent la même MAC.
 
 Ces issues sont informatives : MAC Registry ne modifie rien.
 

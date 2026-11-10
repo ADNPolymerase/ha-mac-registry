@@ -69,14 +69,33 @@
       "summary": {
         "name": "Summary",
         "state_attributes": {
-          "known": { "name": "Known MACs" },
-          "matched": { "name": "Matched" },
-          "labelled": { "name": "Labelled" },
-          "orphans": { "name": "Orphans" },
-          "unseen_devices": { "name": "Devices never seen by the router" },
-          "random": { "name": "Random MACs" },
-          "online": { "name": "Online" },
-          "duplicates": { "name": "Duplicated MACs" }
+          "known": {
+            "name": "Known MACs"
+          },
+          "matched": {
+            "name": "Matched"
+          },
+          "router_linked": {
+            "name": "Linked to the router"
+          },
+          "labelled": {
+            "name": "Labelled"
+          },
+          "orphans": {
+            "name": "Orphans"
+          },
+          "unseen_devices": {
+            "name": "Devices never seen by the router"
+          },
+          "random": {
+            "name": "Random MACs"
+          },
+          "online": {
+            "name": "Online"
+          },
+          "duplicates": {
+            "name": "Duplicated MACs"
+          }
         }
       }
     }
@@ -125,8 +144,8 @@
       "description": "These MACs have been seen by your router on at least {days} different days but are linked to no device:\n\n{macs}\n\nIf they are expected (phone, guest, computer), give them a label in the MAC Registry options (Add a manual link) to remove them from this list."
     },
     "duplicate_macs": {
-      "title": "{count} MAC(s) declared by several devices",
-      "description": "After normalisation, these MACs belong to several Home Assistant devices of different integrations:\n\n{macs}\n\nThis is often the same appliance added through two integrations. MAC Registry changes nothing; check whether one of them can be removed."
+      "title": "{count} MAC(s) declared twice by the same integration",
+      "description": "These MACs belong to several devices of the same integration:\n\n{macs}\n\nDevices of different integrations sharing a MAC are normal and are linked together; two devices of one integration usually mean the same appliance was added twice. MAC Registry changes nothing; check whether one of them can be removed."
     }
   },
   "exceptions": {
