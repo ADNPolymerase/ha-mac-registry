@@ -1,0 +1,23 @@
+name: HACS
+
+on:
+  push:
+  pull_request:
+  schedule:
+    - cron: "23 4 * * 1"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  hacs:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: hacs/action@main
+        with:
+          category: integration
+          # "brands" requires an entry in home-assistant/brands, which a new
+          # custom integration does not have. Home Assistant 2026.x serves the
+          # local icon from custom_components/mac_registry/brand/ instead.
+          ignore: brands
