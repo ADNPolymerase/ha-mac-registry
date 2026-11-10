@@ -1,0 +1,149 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "MAC Registry",
+        "description": "Builds a read-only table linking MAC, IP and hostname to your Home Assistant devices and entities. No network scan, nothing is renamed or modified."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "MAC Registry is already configured."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "MAC Registry",
+        "menu_options": {
+          "settings": "Settings",
+          "add_override": "Add a manual link",
+          "remove_override": "Remove manual links"
+        }
+      },
+      "settings": {
+        "title": "Settings",
+        "data": {
+          "scan_interval": "Safety refresh interval",
+          "router_integrations": "Router integrations to use",
+          "ignore_random": "Ignore random (private) MACs",
+          "use_dhcp": "Use the DHCP discovery cache"
+        },
+        "data_description": {
+          "scan_interval": "The table is also refreshed on registry and router tracker changes.",
+          "router_integrations": "Leave empty to use every device tracker whose source is a router.",
+          "ignore_random": "Locally administered MACs (second digit 2, 6, A or E). When kept they are flagged and never raise a repair.",
+          "use_dhcp": "Reads the cache Home Assistant already keeps. Disabled automatically if it is not available."
+        }
+      },
+      "add_override": {
+        "title": "Add a manual link",
+        "description": "A manual link always wins over automatic matching. A label alone removes the MAC from the orphan list.",
+        "data": {
+          "mac": "MAC address",
+          "device_id": "Device",
+          "label": "Free label"
+        },
+        "data_description": {
+          "mac": "Any format: 00-00-5E-00-53-01, 00:00:5e:00:53:01, 00005e005301."
+        }
+      },
+      "remove_override": {
+        "title": "Remove manual links",
+        "data": {
+          "remove": "Links to remove"
+        }
+      }
+    },
+    "error": {
+      "invalid_mac": "This is not a valid MAC address.",
+      "override_empty": "Choose a device or enter a label.",
+      "unknown_device": "This device does not exist."
+    },
+    "abort": {
+      "not_loaded": "MAC Registry must be loaded to edit manual links.",
+      "no_overrides": "There is no manual link."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "summary": {
+        "name": "Summary",
+        "state_attributes": {
+          "known": { "name": "Known MACs" },
+          "matched": { "name": "Matched" },
+          "labelled": { "name": "Labelled" },
+          "orphans": { "name": "Orphans" },
+          "unseen_devices": { "name": "Devices never seen by the router" },
+          "random": { "name": "Random MACs" },
+          "online": { "name": "Online" },
+          "duplicates": { "name": "Duplicated MACs" }
+        }
+      }
+    }
+  },
+  "selector": {
+    "export_format": {
+      "options": {
+        "csv": "CSV",
+        "markdown": "Markdown"
+      }
+    }
+  },
+  "services": {
+    "lookup": {
+      "name": "Look up",
+      "description": "Finds the device behind a MAC, an IP, a hostname or a raw log line.",
+      "fields": {
+        "query": {
+          "name": "Query",
+          "description": "MAC, IP, hostname or a log line copied as is."
+        }
+      }
+    },
+    "export": {
+      "name": "Export",
+      "description": "Returns the whole table and can write it as CSV or Markdown in the configuration folder.",
+      "fields": {
+        "path": {
+          "name": "File",
+          "description": "Optional, relative to the configuration folder, ending in .csv or .md (for example mac_registry.md)."
+        },
+        "format": {
+          "name": "Format",
+          "description": "Optional, deduced from the file extension."
+        }
+      }
+    },
+    "refresh": {
+      "name": "Refresh",
+      "description": "Rebuilds the table now."
+    }
+  },
+  "issues": {
+    "orphan_macs": {
+      "title": "{count} MAC(s) on your network without a Home Assistant device",
+      "description": "These MACs have been seen by your router on at least {days} different days but are linked to no device:\n\n{macs}\n\nIf they are expected (phone, guest, computer), give them a label in the MAC Registry options (Add a manual link) to remove them from this list."
+    },
+    "duplicate_macs": {
+      "title": "{count} MAC(s) declared by several devices",
+      "description": "After normalisation, these MACs belong to several Home Assistant devices of different integrations:\n\n{macs}\n\nThis is often the same appliance added through two integrations. MAC Registry changes nothing; check whether one of them can be removed."
+    }
+  },
+  "exceptions": {
+    "not_loaded": {
+      "message": "MAC Registry is not loaded."
+    },
+    "path_outside_config": {
+      "message": "The file {path} must be inside the configuration folder."
+    },
+    "path_hidden": {
+      "message": "The file {path} cannot be in a hidden folder."
+    },
+    "path_extension": {
+      "message": "The file {path} must end in .csv or .md and match the requested format."
+    },
+    "path_no_directory": {
+      "message": "The folder of {path} does not exist."
+    }
+  }
+}

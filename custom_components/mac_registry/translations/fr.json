@@ -1,0 +1,149 @@
+{
+  "config": {
+    "step": {
+      "user": {
+        "title": "MAC Registry",
+        "description": "Construit une table en lecture seule qui relie MAC, IP et hostname à tes appareils et entités Home Assistant. Aucun scan réseau, rien n'est renommé ni modifié."
+      }
+    },
+    "abort": {
+      "single_instance_allowed": "MAC Registry est déjà configuré."
+    }
+  },
+  "options": {
+    "step": {
+      "init": {
+        "title": "MAC Registry",
+        "menu_options": {
+          "settings": "Réglages",
+          "add_override": "Ajouter une association manuelle",
+          "remove_override": "Supprimer des associations manuelles"
+        }
+      },
+      "settings": {
+        "title": "Réglages",
+        "data": {
+          "scan_interval": "Intervalle de rafraîchissement de secours",
+          "router_integrations": "Intégrations routeur à utiliser",
+          "ignore_random": "Ignorer les MAC aléatoires (privées)",
+          "use_dhcp": "Utiliser le cache de découverte DHCP"
+        },
+        "data_description": {
+          "scan_interval": "La table est aussi rafraîchie à chaque changement des registres et des trackers du routeur.",
+          "router_integrations": "Laisse vide pour utiliser tous les device_tracker dont la source est un routeur.",
+          "ignore_random": "MAC administrées localement (deuxième chiffre 2, 6, A ou E). Si elles sont gardées, elles sont signalées et ne déclenchent jamais de réparation.",
+          "use_dhcp": "Lit le cache que Home Assistant tient déjà. Désactivé automatiquement s'il n'est pas disponible."
+        }
+      },
+      "add_override": {
+        "title": "Ajouter une association manuelle",
+        "description": "Une association manuelle l'emporte toujours sur le rapprochement automatique. Un simple libellé retire la MAC de la liste des orphelines.",
+        "data": {
+          "mac": "Adresse MAC",
+          "device_id": "Appareil",
+          "label": "Libellé libre"
+        },
+        "data_description": {
+          "mac": "N'importe quel format : 00-00-5E-00-53-01, 00:00:5e:00:53:01, 00005e005301."
+        }
+      },
+      "remove_override": {
+        "title": "Supprimer des associations manuelles",
+        "data": {
+          "remove": "Associations à supprimer"
+        }
+      }
+    },
+    "error": {
+      "invalid_mac": "Ce n'est pas une adresse MAC valide.",
+      "override_empty": "Choisis un appareil ou saisis un libellé.",
+      "unknown_device": "Cet appareil n'existe pas."
+    },
+    "abort": {
+      "not_loaded": "MAC Registry doit être chargé pour modifier les associations manuelles.",
+      "no_overrides": "Aucune association manuelle."
+    }
+  },
+  "entity": {
+    "sensor": {
+      "summary": {
+        "name": "Résumé",
+        "state_attributes": {
+          "known": { "name": "MAC connues" },
+          "matched": { "name": "Rapprochées" },
+          "labelled": { "name": "Avec libellé" },
+          "orphans": { "name": "Orphelines" },
+          "unseen_devices": { "name": "Appareils jamais vus par le routeur" },
+          "random": { "name": "MAC aléatoires" },
+          "online": { "name": "En ligne" },
+          "duplicates": { "name": "MAC en double" }
+        }
+      }
+    }
+  },
+  "selector": {
+    "export_format": {
+      "options": {
+        "csv": "CSV",
+        "markdown": "Markdown"
+      }
+    }
+  },
+  "services": {
+    "lookup": {
+      "name": "Rechercher",
+      "description": "Retrouve l'appareil derrière une MAC, une IP, un hostname ou une ligne de log brute.",
+      "fields": {
+        "query": {
+          "name": "Recherche",
+          "description": "MAC, IP, hostname ou ligne de log copiée telle quelle."
+        }
+      }
+    },
+    "export": {
+      "name": "Exporter",
+      "description": "Renvoie toute la table et peut l'écrire en CSV ou Markdown dans le dossier de configuration.",
+      "fields": {
+        "path": {
+          "name": "Fichier",
+          "description": "Facultatif, relatif au dossier de configuration, en .csv ou .md (par exemple mac_registry.md)."
+        },
+        "format": {
+          "name": "Format",
+          "description": "Facultatif, déduit de l'extension du fichier."
+        }
+      }
+    },
+    "refresh": {
+      "name": "Rafraîchir",
+      "description": "Reconstruit la table maintenant."
+    }
+  },
+  "issues": {
+    "orphan_macs": {
+      "title": "{count} MAC sur ton réseau sans appareil Home Assistant",
+      "description": "Ces MAC ont été vues par ton routeur au moins {days} jours différents mais ne sont reliées à aucun appareil :\n\n{macs}\n\nSi elles sont normales (téléphone, invité, ordinateur), donne-leur un libellé dans les options de MAC Registry (Ajouter une association manuelle) pour les retirer de cette liste."
+    },
+    "duplicate_macs": {
+      "title": "{count} MAC déclarée(s) par plusieurs appareils",
+      "description": "Après normalisation, ces MAC appartiennent à plusieurs appareils Home Assistant d'intégrations différentes :\n\n{macs}\n\nC'est souvent le même appareil ajouté par deux intégrations. MAC Registry ne modifie rien ; vérifie si l'un des deux peut être supprimé."
+    }
+  },
+  "exceptions": {
+    "not_loaded": {
+      "message": "MAC Registry n'est pas chargé."
+    },
+    "path_outside_config": {
+      "message": "Le fichier {path} doit se trouver dans le dossier de configuration."
+    },
+    "path_hidden": {
+      "message": "Le fichier {path} ne peut pas être dans un dossier caché."
+    },
+    "path_extension": {
+      "message": "Le fichier {path} doit finir par .csv ou .md et correspondre au format demandé."
+    },
+    "path_no_directory": {
+      "message": "Le dossier de {path} n'existe pas."
+    }
+  }
+}
