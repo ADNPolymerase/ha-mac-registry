@@ -1,0 +1,20 @@
+{
+  "entity": {
+    "sensor": {
+      "summary": {
+        "default": "mdi:lan"
+      }
+    }
+  },
+  "services": {
+    "lookup": {
+      "service": "mdi:magnify"
+    },
+    "export": {
+      "service": "mdi:file-export"
+    },
+    "refresh": {
+      "service": "mdi:refresh"
+    }
+  }
+}
