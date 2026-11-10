@@ -57,14 +57,14 @@ Rules:
 
 - MACs are normalised to `aa:bb:cc:dd:ee:ff` whatever the input format (`AA-BB-…`, no separator, `aabb.ccdd.eeff`, `_`). Zigbee IEEE addresses (`0x…`) are ignored. Bluetooth MACs get their own row (`mac_type: bluetooth`).
 - `hostname`, `ip` and `discovery` links require a **single candidate**. Otherwise the row stays `unmatched` with its `candidates`.
-- The device a router integration creates for its tracker does not count as a match (it is kept in `router_device_id`).
-- Since Home Assistant 2026.10, two integrations can declare the same MAC on two separate devices. MAC Registry flags it (`duplicate: true` and a repair).
+- The device a router integration registers for its own tracker is not a match by itself: it is the router side of the link, kept in `router_device_id`, and the row points to the device of the integration that declares the same MAC.
+- Since Home Assistant 2026.10, several integrations can declare the same MAC, each on its own device. They are linked on one row: the device with the most entities leads and the others are listed in `linked_devices`. Only two devices of the **same** integration sharing a MAC are flagged (`duplicate: true` and a repair).
 - From config entries only `data["host"]`, `data["ip_address"]` and `unique_id` are read. Nothing else is read, logged or exposed (passwords included).
 - DHCP is read through the public `homeassistant.components.dhcp.async_discovered_service_info` helper and disabled automatically when unavailable. Zeroconf has no equivalent public API and is not used.
 
 ## Sensor
 
-`sensor.mac_registry_summary` holds the number of known MACs. Its attributes give `matched`, `orphans` (seen by the router, no Home Assistant device), `unseen_devices` (device MACs never seen by the router, Bluetooth and Zigbee excluded), `random`, `duplicates`, `by_confidence`, `dhcp_source`, plus short lists (`orphan_list`, `unseen_device_list`, `duplicate_list`). Attributes stay below 16 kB and the lists are excluded from the recorder.
+`sensor.mac_registry_summary` holds the number of known MACs. Its attributes give `matched`, `router_linked` (router side linked to an integration's device), `orphans` (seen by the router, no Home Assistant device), `unseen_devices` (device MACs never seen by the router, Bluetooth and Zigbee excluded), `random`, `duplicates`, `by_confidence`, `dhcp_source`, plus short lists (`orphan_list`, `unseen_device_list`, `duplicate_list`). Attributes stay below 16 kB and the lists are excluded from the recorder.
 
 ## Actions
 
@@ -137,7 +137,7 @@ actions:
 ## Repairs
 
 - One grouped issue for non-random orphan MACs seen on at least 3 different days. A label removes a MAC from it.
-- One grouped issue when several devices declare the same MAC.
+- One grouped issue when several devices of the same integration declare the same MAC.
 
 These issues are informative: MAC Registry changes nothing.
 

@@ -88,7 +88,18 @@ async def test_table_levels_and_exclusions(hass: HomeAssistant) -> None:
     esp = table.by_mac["00:00:5e:00:53:50"]
     assert (esp["confidence"], esp["device_name"]) == ("hostname", "Example Sensor")
     assert table.by_mac["00:00:5e:00:53:60"]["confidence"] == "registry"
-    assert table.by_mac["00:00:5e:00:53:70"]["duplicate"] is True
+    # Two integrations sharing a MAC are linked, not flagged
+    heater = table.by_mac["00:00:5e:00:53:70"]
+    assert heater["duplicate"] is False
+    assert heater["device_name"] == "Example Heater (cloud)"
+    assert [d["integration"] for d in heater["linked_devices"]] == ["localtuya"]
+    # The same MAC twice in one integration is a duplicate
+    lamp = table.by_mac["00:00:5e:00:53:71"]
+    assert lamp["duplicate"] is True
+    assert {d["device_name"] for d in lamp["duplicate_devices"]} == {
+        "Example Lamp",
+        "Example Lamp (copy)",
+    }
     laptop = table.by_mac["00:00:5e:00:53:41"]
     assert laptop["confidence"] == "unmatched"
     assert laptop["router_device_id"] is not None  # router-created device ignored
@@ -98,6 +109,47 @@ async def test_table_levels_and_exclusions(hass: HomeAssistant) -> None:
     # Fan only known by IP in its config entry: lookup gives it as candidate
     fan = await _lookup(hass, "192.0.2.99")
     assert fan["candidates"][0]["device_name"] == "Example Fan"
+
+
+async def test_router_side_devices_are_linked(hass: HomeAssistant) -> None:
+    """The router's own device for a client links to the integration's device.
+
+    Since Home Assistant 2026.10 the router integration registers a device with
+    the same MAC as soon as another integration knows it. That pair is the
+    normal case, whatever the state of the router tracker.
+    """
+    await async_setup_scenario(hass)
+    entry = await async_setup_integration(hass)
+    table = entry.runtime_data.data
+
+    # Tracker restored without router attributes
+    ac = table.by_mac["00:00:5e:00:53:a1"]
+    assert (ac["confidence"], ac["device_name"], ac["integration"]) == (
+        "tracker+registry",
+        "Example AC",
+        "gree",
+    )
+    assert ac["duplicate"] is False
+    assert ac["linked_devices"] == []
+    assert ac["router_device_id"] is not None
+    assert ac["tracker"] == "device_tracker.example_ac"
+    assert ac["entities"] == ["climate.example_ac"]
+    assert "router" in ac["sources"]
+
+    # Router-side device named after the MAC, tracker gone
+    pc = table.by_mac["00:00:5e:00:53:a2"]
+    assert (pc["confidence"], pc["device_name"]) == ("tracker+registry", "Example PC")
+    assert pc["duplicate"] is False
+    assert pc["router_device_id"] is not None
+    assert pc["tracker"] is None
+
+    # Tracker with a live router state: same result
+    shelly = table.by_mac["00:00:5e:00:53:01"]
+    assert shelly["duplicate"] is False
+    assert shelly["router_device_id"] is not None
+
+    assert [d["mac"] for d in table.duplicates] == ["00:00:5e:00:53:71"]
+    assert entry.runtime_data.summary["duplicates"] == 1
 
 
 async def test_summary_sensor(hass: HomeAssistant) -> None:
@@ -110,11 +162,14 @@ async def test_summary_sensor(hass: HomeAssistant) -> None:
     assert int(state.state) == attrs["known"]
     assert attrs["orphans"] == 2  # laptop + random phone
     # Hub and heater: Bluetooth (ESP) and Zigbee are excluded
-    assert attrs["unseen_devices"] == 2
+    assert attrs["unseen_devices"] == 3
     assert {d["mac"] for d in attrs["unseen_device_list"]} == {
         "00:00:5e:00:53:60",
         "00:00:5e:00:53:70",
+        "00:00:5e:00:53:71",
     }
+    # shelly, plug, camera, AC, PC by MAC; vacuum by IP; sensor by hostname
+    assert attrs["router_linked"] == 7
     assert attrs["duplicates"] == 1
     assert attrs["random"] == 1
     assert {o["mac"] for o in attrs["orphan_list"]} == {"00:00:5e:00:53:41", "02:00:5e:00:53:40"}
@@ -291,7 +346,9 @@ async def test_repairs(hass: HomeAssistant, hass_storage: dict[str, Any]) -> Non
     assert "00:00:5e:00:53:41" in orphans.translation_placeholders["macs"]
     duplicates = registry.async_get_issue(DOMAIN, ISSUE_DUPLICATES)
     assert duplicates is not None
-    assert "Example Heater (cloud)" in duplicates.translation_placeholders["macs"]
+    assert duplicates.translation_placeholders["count"] == "1"
+    assert "Example Lamp (copy)" in duplicates.translation_placeholders["macs"]
+    assert "Example Heater" not in duplicates.translation_placeholders["macs"]
 
     # A label removes the MAC from the orphan issue
     entry.runtime_data.store.set_override("00:00:5e:00:53:41", None, "Office laptop")

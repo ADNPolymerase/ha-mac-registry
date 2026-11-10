@@ -69,14 +69,33 @@
       "summary": {
         "name": "Résumé",
         "state_attributes": {
-          "known": { "name": "MAC connues" },
-          "matched": { "name": "Rapprochées" },
-          "labelled": { "name": "Avec libellé" },
-          "orphans": { "name": "Orphelines" },
-          "unseen_devices": { "name": "Appareils jamais vus par le routeur" },
-          "random": { "name": "MAC aléatoires" },
-          "online": { "name": "En ligne" },
-          "duplicates": { "name": "MAC en double" }
+          "known": {
+            "name": "MAC connues"
+          },
+          "matched": {
+            "name": "Rapprochées"
+          },
+          "router_linked": {
+            "name": "Reliées au routeur"
+          },
+          "labelled": {
+            "name": "Avec libellé"
+          },
+          "orphans": {
+            "name": "Orphelines"
+          },
+          "unseen_devices": {
+            "name": "Appareils jamais vus par le routeur"
+          },
+          "random": {
+            "name": "MAC aléatoires"
+          },
+          "online": {
+            "name": "En ligne"
+          },
+          "duplicates": {
+            "name": "MAC en double"
+          }
         }
       }
     }
@@ -125,8 +144,8 @@
       "description": "Ces MAC ont été vues par ton routeur au moins {days} jours différents mais ne sont reliées à aucun appareil :\n\n{macs}\n\nSi elles sont normales (téléphone, invité, ordinateur), donne-leur un libellé dans les options de MAC Registry (Ajouter une association manuelle) pour les retirer de cette liste."
     },
     "duplicate_macs": {
-      "title": "{count} MAC déclarée(s) par plusieurs appareils",
-      "description": "Après normalisation, ces MAC appartiennent à plusieurs appareils Home Assistant d'intégrations différentes :\n\n{macs}\n\nC'est souvent le même appareil ajouté par deux intégrations. MAC Registry ne modifie rien ; vérifie si l'un des deux peut être supprimé."
+      "title": "{count} MAC déclarée(s) deux fois par la même intégration",
+      "description": "Ces MAC appartiennent à plusieurs appareils de la même intégration :\n\n{macs}\n\nDes appareils d'intégrations différentes qui partagent une MAC, c'est normal : ils sont reliés entre eux. Deux appareils d'une même intégration signalent en général un appareil ajouté deux fois. MAC Registry ne modifie rien ; vérifie si l'un des deux peut être supprimé."
     }
   },
   "exceptions": {

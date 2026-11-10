@@ -29,6 +29,7 @@ CSV_COLUMNS = (
     "last_ips",
     "device_id",
     "entities",
+    "linked_devices",
 )
 
 
@@ -76,7 +77,12 @@ def _cell(row: dict[str, Any], key: str) -> str:
     if isinstance(value, bool):
         return "yes" if value else "no"
     if isinstance(value, (list, tuple)):
-        return " ".join(str(item) for item in value)
+        return " ".join(
+            f"{item.get('device_name')} ({item.get('integration')})"
+            if isinstance(item, dict)
+            else str(item)
+            for item in value
+        )
     return str(value)
 
 
@@ -109,6 +115,8 @@ def render_markdown(rows: list[dict[str, Any]], summary: dict[str, Any], generat
     ]
     for row in rows:
         device = row.get("device_name") or row.get("label") or ""
+        if linked := row.get("linked_devices"):
+            device += f" (+{len(linked)})"
         entities = row.get("entities") or []
         shown = ", ".join(entities[:3]) + (f" (+{len(entities) - 3})" if len(entities) > 3 else "")
         flags = " (random)" if row.get("random") else ""

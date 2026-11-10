@@ -64,6 +64,7 @@ class MacRegistrySummarySensor(CoordinatorEntity[MacRegistryCoordinator], Sensor
         attrs: dict[str, Any] = {
             "known": summary.get("known", 0),
             "matched": summary.get("matched", 0),
+            "router_linked": summary.get("router_linked", 0),
             "labelled": summary.get("labelled", 0),
             "orphans": summary.get("orphans", 0),
             "unseen_devices": summary.get("unseen_devices", 0),

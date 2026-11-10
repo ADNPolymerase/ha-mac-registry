@@ -172,7 +172,6 @@ class MacRegistryCoordinator(DataUpdateCoordinator[Table]):
         ent_reg = er.async_get(hass)
 
         # Router trackers
-        all_router_tracker_ids: dict[str, str | None] = {}
         trackers: list[TrackerInput] = []
         platforms: set[str] = set()
         for state in hass.states.async_all(TRACKER_DOMAIN):
@@ -181,7 +180,6 @@ class MacRegistryCoordinator(DataUpdateCoordinator[Table]):
                 continue
             reg_entry = ent_reg.async_get(state.entity_id)
             platform = reg_entry.platform if reg_entry else None
-            all_router_tracker_ids[state.entity_id] = platform
             if platform:
                 platforms.add(platform)
             if (mac := normalize_mac(attrs.get(ATTR_TRACKER_MAC))) is None:
@@ -203,16 +201,16 @@ class MacRegistryCoordinator(DataUpdateCoordinator[Table]):
                 )
             )
         self.router_platforms = platforms
+        # Integrations named in the options stay router integrations even when
+        # none of their trackers has a state (router unreachable, restart...)
+        router_domains = platforms | router_filter
 
         # Entities per device (child devices are folded into their parent)
         entities: dict[str, list[str]] = defaultdict(list)
-        router_client_devices: set[str] = set()
         for reg_entry in ent_reg.entities.values():
             if reg_entry.device_id is None:
                 continue
             entities[reg_entry.device_id].append(reg_entry.entity_id)
-            if reg_entry.entity_id in all_router_tracker_ids:
-                router_client_devices.add(reg_entry.device_id)
         for child in dev_reg.child_devices:
             parent = getattr(child, "parent_device_id", None)
             if parent and child.id in entities:
@@ -251,7 +249,12 @@ class MacRegistryCoordinator(DataUpdateCoordinator[Table]):
                     bt_macs=tuple(bt_macs),
                     entities=tuple(sorted(device_entities)),
                     disabled=device.disabled,
-                    router_client=device.id in router_client_devices,
+                    # Since Home Assistant 2026.10 a router integration registers
+                    # its own device, with the same MAC, for each client another
+                    # integration knows. It only carries device trackers (or
+                    # nothing when the tracker is gone), unlike the router itself.
+                    router_client=domain in router_domains
+                    and all(eid.startswith(f"{TRACKER_DOMAIN}.") for eid in device_entities),
                 )
             )
 
@@ -286,7 +289,7 @@ class MacRegistryCoordinator(DataUpdateCoordinator[Table]):
             entries=entries,
             dhcp=self._dhcp_snapshot(),
             overrides={mac: dict(value) for mac, value in self.store.overrides.items()},
-            router_domains=frozenset(platforms),
+            router_domains=frozenset(router_domains),
             ignore_random=bool(options.get(CONF_IGNORE_RANDOM, DEFAULT_IGNORE_RANDOM)),
         )
 
