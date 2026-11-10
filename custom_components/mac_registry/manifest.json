@@ -2,6 +2,7 @@
   "domain": "mac_registry",
   "name": "MAC Registry",
   "after_dependencies": ["dhcp"],
+  "categories": ["computers_network.routers_network"],
   "codeowners": ["@ADNPolymerase"],
   "config_flow": true,
   "dependencies": ["websocket_api"],
