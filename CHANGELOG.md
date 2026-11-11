@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.0 - 2026-11-11
+
+### Added
+
+- **Proposals for orphan MACs.** A MAC seen by the router but linked to no device gets up to three proposed devices: the ambiguous candidates found by hostname or IP, then the devices whose name looks like the client's name in the router (its hostname, or the tracker's name when you renamed it). Names are compared word by word, without accents, separators or filler words such as `airplay`, and the device's manufacturer counts (`Arlo-Avant` matches the device `Avant` made by Arlo). Only devices that declare no network MAC are proposed: the others are already linked by their MAC. Each row has a `proposals` list with the device, the reason and a score; nothing is linked without your approval.
+- **The orphan repair can be fixed in one screen.** Open it from Settings → Repairs: tick the proposals to accept, and the MACs that have no Home Assistant device (phone, computer, guest) to label them with their name. Nothing is selected by default.
+- **`mac_registry.link` and `mac_registry.unlink` actions** to link a MAC to a device or give it a label from an automation or a script, and to remove that link.
+- `sensor.mac_registry_summary` gains `proposals` and a short `proposal_list`. The CSV export gains a `proposals` column.
+
+### Good to know
+
+- Accepting a proposal or labelling a MAC is stored in MAC Registry only (`.storage/mac_registry`), like the manual links of the options. Nothing else in Home Assistant is changed.
+
 ## 0.1.1 - 2026-11-10
 
 ### Fixed

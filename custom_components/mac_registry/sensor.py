@@ -17,7 +17,7 @@ from .matcher import is_orphan, is_unseen_device
 
 PARALLEL_UPDATES = 0
 
-LIST_ATTRIBUTES = ("orphan_list", "unseen_device_list", "duplicate_list")
+LIST_ATTRIBUTES = ("orphan_list", "unseen_device_list", "duplicate_list", "proposal_list")
 
 
 async def async_setup_entry(
@@ -71,6 +71,7 @@ class MacRegistrySummarySensor(CoordinatorEntity[MacRegistryCoordinator], Sensor
             "random": summary.get("random", 0),
             "online": summary.get("online", 0),
             "duplicates": summary.get("duplicates", 0),
+            "proposals": summary.get("proposals", 0),
             "by_confidence": summary.get("by_confidence", {}),
             "dhcp_source": "active" if coordinator.dhcp_available else "inactive",
             "last_built": coordinator.last_built,
@@ -83,6 +84,17 @@ class MacRegistrySummarySensor(CoordinatorEntity[MacRegistryCoordinator], Sensor
                 {"mac": r["mac"], "device": r["device_name"], "integration": r["integration"]}
                 for r in rows
                 if is_unseen_device(r)
+            ],
+            "proposal_list": [
+                {
+                    "mac": r["mac"],
+                    "hostname": r["hostname"],
+                    "device": r["proposals"][0]["device_name"],
+                    "integration": r["proposals"][0]["integration"],
+                    "score": r["proposals"][0]["score"],
+                }
+                for r in rows
+                if r["proposals"]
             ],
             "duplicate_list": [
                 {"mac": d["mac"], "devices": [dev["device_name"] for dev in d["devices"]]}

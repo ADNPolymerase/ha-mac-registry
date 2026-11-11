@@ -62,9 +62,18 @@ Règles :
 - Config entries : seules les clés `host` et `ip_address` de `data` sont lues, ainsi que `unique_id`. Rien d'autre n'est lu, journalisé ou exposé (mots de passe compris).
 - DHCP : lu via l'API publique `homeassistant.components.dhcp.async_discovered_service_info`. La source se désactive seule si elle n'est pas disponible. Zeroconf n'expose pas d'API publique équivalente et n'est pas utilisé.
 
+## Propositions
+
+Une MAC vue par le routeur mais reliée à aucun appareil reçoit jusqu'à trois appareils proposés dans sa liste `proposals` :
+
+- les candidats ambigus trouvés par hostname ou IP ;
+- les appareils dont le nom ressemble au nom du client dans le routeur (hostname, ou nom du tracker si tu l'as renommé). Les noms sont comparés mot à mot, sans accents, séparateurs ni mots creux comme `airplay`, et le fabricant compte : `Arlo-Avant` correspond à l'appareil `Avant` fabriqué par Arlo.
+
+Seuls les appareils qui ne déclarent pas de MAC réseau sont proposés ; les autres sont déjà reliés par leur MAC. Rien n'est associé sans ton accord : accepte les propositions depuis la réparation ci-dessous, avec l'action `mac_registry.link`, ou dans les options.
+
 ## Capteur
 
-`sensor.mac_registry_summary` : nombre de MAC connues. Les attributs donnent `matched`, `router_linked` (côté routeur relié à l'appareil d'une intégration), `orphans` (vues par le routeur sans appareil Home Assistant), `unseen_devices` (MAC d'appareils jamais vues par le routeur, Bluetooth et Zigbee exclus), `random`, `duplicates`, `by_confidence`, `dhcp_source`, ainsi que des listes courtes (`orphan_list`, `unseen_device_list`, `duplicate_list`). Les attributs restent sous 16 ko et les listes sont exclues du recorder.
+`sensor.mac_registry_summary` : nombre de MAC connues. Les attributs donnent `matched`, `proposals` (orphelines avec un appareil proposé), `router_linked` (côté routeur relié à l'appareil d'une intégration), `orphans` (vues par le routeur sans appareil Home Assistant), `unseen_devices` (MAC d'appareils jamais vues par le routeur, Bluetooth et Zigbee exclus), `random`, `duplicates`, `by_confidence`, `dhcp_source`, ainsi que des listes courtes (`orphan_list`, `unseen_device_list`, `duplicate_list`). Les attributs restent sous 16 ko et les listes sont exclues du recorder.
 
 ## Actions
 
@@ -101,6 +110,21 @@ data:
 action: mac_registry.refresh
 ```
 
+```yaml
+action: mac_registry.link
+data:
+  mac: "00:00:5e:00:53:41"
+  device_id: 0123456789abcdef0123456789abcdef   # ou : label: "Portable bureau"
+```
+
+```yaml
+action: mac_registry.unlink
+data:
+  mac: "00:00:5e:00:53:41"
+```
+
+`link` et `unlink` stockent l'association dans MAC Registry uniquement ; rien d'autre ne change dans Home Assistant.
+
 ## Événements
 
 - `mac_registry_new_mac` : MAC jamais vue (aucun événement au tout premier passage, pour éviter une rafale à l'installation).
@@ -136,7 +160,7 @@ actions:
 
 ## Réparations
 
-- Une seule issue groupée pour les MAC orphelines non aléatoires vues au moins 3 jours distincts. Un libellé manuel retire la MAC de la liste.
+- Une seule issue groupée pour les MAC orphelines non aléatoires vues au moins 3 jours distincts. Ouvre-la pour la corriger en un seul écran : coche les propositions à accepter, et les MAC sans appareil Home Assistant pour leur donner leur nom comme libellé.
 - Une issue groupée quand plusieurs appareils de la même intégration déclarent la même MAC.
 
 Ces issues sont informatives : MAC Registry ne modifie rien.

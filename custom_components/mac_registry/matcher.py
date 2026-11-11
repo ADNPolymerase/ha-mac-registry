@@ -11,6 +11,7 @@ from dataclasses import dataclass, field
 import ipaddress
 import re
 from typing import Any
+import unicodedata
 
 from .const import (
     CONF_DISCOVERY,
@@ -21,6 +22,7 @@ from .const import (
     CONF_TRACKER_REGISTRY,
     CONF_UNMATCHED,
     CONFIDENCE_ORDER,
+    DOMAIN,
     ORPHAN_MIN_DAYS,
     SRC_DHCP,
     SRC_HISTORY,
@@ -279,6 +281,7 @@ class TrackerInput:
     online: bool
     connection: str | None = None
     device_id: str | None = None
+    name: str | None = None  # friendly name, often renamed by the user
 
 
 @dataclass(slots=True, frozen=True)
@@ -357,6 +360,71 @@ def _same_integration_groups(devices: list[DeviceInput]) -> list[DeviceInput]:
 # --------------------------------------------------------------------------
 
 
+# --------------------------------------------------------------------------
+# Name proposals
+# --------------------------------------------------------------------------
+
+# Words that say nothing about which device it is
+_NAME_STOPWORDS = frozenset(
+    {"airplay", "the", "de", "du", "des", "la", "le", "les", "of", "wifi", "wlan", "lan", "eth"}
+)
+NAME_PROPOSAL_MIN_SCORE = 0.6
+NAME_CONTAIN_MIN_LENGTH = 5
+MAX_PROPOSALS = 3
+
+
+def name_tokens(value: Any) -> list[str]:
+    """Lower-case ASCII words of a name, without filler words."""
+    if not isinstance(value, str):
+        return []
+    text = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode().lower()
+    return [t for t in re.split(r"[^a-z0-9]+", text) if t and t not in _NAME_STOPWORDS]
+
+
+def name_score(left: list[str], right: list[str]) -> float:
+    """Similarity of two token lists, from 0 to 1.
+
+    Equal words joined together score 1 (``EcoFlow-Powerstream`` and
+    ``EcoFlow PowerStream``), one name inside the other scores 0.6 to 1
+    depending on how much it covers, otherwise the share of common words.
+    """
+    if not left or not right:
+        return 0.0
+    a, b = "".join(left), "".join(right)
+    if a == b:
+        return 1.0
+    short, long_ = sorted((a, b), key=len)
+    contain = 0.0
+    if len(short) >= NAME_CONTAIN_MIN_LENGTH and short in long_:
+        contain = 0.6 + 0.4 * len(short) / len(long_)
+    common = set(left) & set(right)
+    jaccard = len(common) / len(set(left) | set(right))
+    return round(max(contain, jaccard), 2)
+
+
+def _device_name_tokens(device: DeviceInput) -> list[list[str]]:
+    names = [name_tokens(device.name)]
+    if device.manufacturer:
+        names.append(name_tokens(f"{device.manufacturer} {device.name}"))
+    return [n for n in names if n]
+
+
+def _name_proposals(
+    names: list[str | None], devices: list[tuple[DeviceInput, list[list[str]]]]
+) -> list[tuple[DeviceInput, float]]:
+    """Devices whose name looks like one of the given names, best first."""
+    sources = [tokens for value in names if (tokens := name_tokens(value))]
+    if not sources:
+        return []
+    scored: list[tuple[DeviceInput, float]] = []
+    for device, device_names in devices:
+        score = max(name_score(src, dn) for src in sources for dn in device_names)
+        if score >= NAME_PROPOSAL_MIN_SCORE:
+            scored.append((device, score))
+    scored.sort(key=lambda item: (-item[1], item[0].name.lower(), item[0].device_id))
+    return scored[:MAX_PROPOSALS]
+
+
 def build_table(snap: Snapshot) -> Table:
     """Build the MAC table from a snapshot."""
     devices_by_id = {d.device_id: d for d in snap.devices}
@@ -381,6 +449,18 @@ def build_table(snap: Snapshot) -> Table:
             suffix_index[mac_hex(mac)[6:]].add(device.device_id)
         if device.config_entry_id:
             devices_by_entry[device.config_entry_id].append(device)
+
+    # Devices a name can be proposed for: real devices that do not declare a
+    # network MAC (those are linked by MAC already)
+    name_candidates = [
+        (device, tokens)
+        for device in snap.devices
+        if not device.router_client
+        and not device.macs
+        and device.domain != DOMAIN
+        and not device.disabled
+        and (tokens := _device_name_tokens(device))
+    ]
 
     entries_by_mac: dict[str, list[EntryInput]] = defaultdict(list)
     entries_by_ip: dict[str, list[EntryInput]] = defaultdict(list)
@@ -508,6 +588,21 @@ def build_table(snap: Snapshot) -> Table:
             else []
         )
         unique_candidates = {c.device_id: c for c in candidates}
+        proposals: list[dict[str, Any]] = []
+        if device is None and label is None and (seen_by_router or dhcp_item):
+            proposals = [
+                {**_device_ref(c), "reason": "candidate", "score": None}
+                for c in unique_candidates.values()
+            ]
+            known = {p["device_id"] for p in proposals}
+            proposals.extend(
+                {**_device_ref(d), "reason": "name", "score": score}
+                for d, score in _name_proposals(
+                    [hostname, tracker.name if tracker else None], name_candidates
+                )
+                if d.device_id not in known
+            )
+            proposals = proposals[:MAX_PROPOSALS]
         row: dict[str, Any] = {
             "mac": mac,
             "mac_type": "bluetooth" if is_bt else "mac",
@@ -534,6 +629,7 @@ def build_table(snap: Snapshot) -> Table:
             "duplicate": bool(duplicates),
             "duplicate_devices": [_device_ref(d) for d in duplicates],
             "candidates": [_device_ref(c) for c in unique_candidates.values()],
+            "proposals": proposals,
             "seen_by_router": seen_by_router,
             "first_seen": hist.get("first_seen"),
             "last_seen": hist.get("last_seen"),
@@ -634,6 +730,7 @@ def summarize(table: Table) -> dict[str, Any]:
         "random": sum(1 for r in rows if r["random"]),
         "online": sum(1 for r in rows if r["online"]),
         "duplicates": len(table.duplicates),
+        "proposals": sum(1 for r in rows if r["proposals"]),
         "by_confidence": by_confidence,
     }
 

@@ -15,6 +15,12 @@
     },
     "refresh": {
       "service": "mdi:refresh"
+    },
+    "link": {
+      "service": "mdi:link-variant"
+    },
+    "unlink": {
+      "service": "mdi:link-variant-off"
     }
   }
 }
