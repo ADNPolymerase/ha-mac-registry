@@ -95,6 +95,9 @@
           },
           "duplicates": {
             "name": "MAC en double"
+          },
+          "proposals": {
+            "name": "Propositions"
           }
         }
       }
@@ -136,12 +139,59 @@
     "refresh": {
       "name": "Rafraîchir",
       "description": "Reconstruit la table maintenant."
+    },
+    "link": {
+      "name": "Associer",
+      "description": "Associe une MAC à un appareil Home Assistant, ou lui donne un libellé libre. Stocké dans MAC Registry uniquement ; rien d'autre n'est modifié dans Home Assistant.",
+      "fields": {
+        "mac": {
+          "name": "Adresse MAC",
+          "description": "N'importe quel format : 00-00-5E-00-53-01, 00:00:5e:00:53:01, 00005e005301."
+        },
+        "device_id": {
+          "name": "Appareil",
+          "description": "Appareil auquel associer la MAC."
+        },
+        "label": {
+          "name": "Libellé",
+          "description": "Libellé libre pour une MAC sans appareil Home Assistant (téléphone, ordinateur…)."
+        }
+      }
+    },
+    "unlink": {
+      "name": "Dissocier",
+      "description": "Supprime l'association manuelle d'une MAC.",
+      "fields": {
+        "mac": {
+          "name": "Adresse MAC",
+          "description": "MAC dont l'association manuelle est supprimée."
+        }
+      }
     }
   },
   "issues": {
     "orphan_macs": {
       "title": "{count} MAC sur ton réseau sans appareil Home Assistant",
-      "description": "Ces MAC ont été vues par ton routeur au moins {days} jours différents mais ne sont reliées à aucun appareil :\n\n{macs}\n\nSi elles sont normales (téléphone, invité, ordinateur), donne-leur un libellé dans les options de MAC Registry (Ajouter une association manuelle) pour les retirer de cette liste."
+      "fix_flow": {
+        "step": {
+          "links": {
+            "title": "Associer ou nommer les MAC orphelines",
+            "description": "{orphans} MAC vues par ton routeur au moins {days} jours différents ne sont reliées à aucun appareil :\n\n{macs}\n\n{proposals} proposition(s) trouvée(s) par le nom. Rien n'est coché par défaut ; tes choix sont stockés dans MAC Registry uniquement, rien d'autre ne change dans Home Assistant.",
+            "data": {
+              "link": "Accepter ces propositions",
+              "known": "Sans appareil Home Assistant (leur donner leur nom comme libellé)"
+            },
+            "data_description": {
+              "link": "La MAC est associée à l'appareil dans MAC Registry ; rien d'autre ne change dans Home Assistant.",
+              "known": "Un libellé retire la MAC de cette liste. Les propositions acceptées au-dessus l'emportent sur cette liste."
+            }
+          }
+        },
+        "abort": {
+          "not_loaded": "MAC Registry n'est pas chargé.",
+          "no_orphans": "Il n'y a plus de MAC orpheline."
+        }
+      }
     },
     "duplicate_macs": {
       "title": "{count} MAC déclarée(s) deux fois par la même intégration",
@@ -163,6 +213,15 @@
     },
     "path_no_directory": {
       "message": "Le dossier de {path} n'existe pas."
+    },
+    "invalid_mac": {
+      "message": "{mac} n'est pas une adresse MAC valide."
+    },
+    "link_empty": {
+      "message": "Indique un appareil ou un libellé."
+    },
+    "unknown_device": {
+      "message": "L'appareil {device_id} n'existe pas."
     }
   }
 }

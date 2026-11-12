@@ -15,6 +15,8 @@ from custom_components.mac_registry.matcher import (
     hostname_hint,
     is_random_mac,
     lookup,
+    name_score,
+    name_tokens,
     normalize_hostname,
     normalize_mac,
     split_host,
@@ -317,3 +319,93 @@ def test_dhcp_source_and_lookup() -> None:
 
     unknown = lookup(table, "00:00:5e:00:53:ff and 192.0.2.250")
     assert unknown["unknown"] == ["00:00:5e:00:53:ff", "192.0.2.250"]
+
+
+@pytest.mark.parametrize(
+    ("left", "right", "minimum", "maximum"),
+    [
+        ("EcoFlow-Powerstream", "EcoFlow PowerStream", 1.0, 1.0),
+        ("airplay-bose", "Bose", 1.0, 1.0),  # filler word dropped
+        ("thermostat-sejour", "Thermostat Séjour", 1.0, 1.0),  # accents
+        ("Apple TV", "Apple TV Salon", 0.8, 0.9),  # one name inside the other
+        ("Example-Laptop", "Example Fan", 0.0, 0.34),  # one common word only
+        ("TV", "Apple TV", 0.5, 0.5),  # too short to count as contained
+    ],
+)
+def test_name_score(left: str, right: str, minimum: float, maximum: float) -> None:
+    """Names are compared on words, accents and separators removed."""
+    score = name_score(name_tokens(left), name_tokens(right))
+    assert minimum <= score <= maximum
+
+
+def test_name_proposals() -> None:
+    """Orphans get devices whose name matches; MAC devices and routers do not."""
+    snap = Snapshot(
+        devices=[
+            _device("appletv", name="Apple TV Salon", domain="apple_tv"),
+            _device("arlo", name="Avant", manufacturer="Arlo", domain="arlo"),
+            _device("bose", name="Bose", domain="soundtouch"),
+            # Declares a MAC: linked by MAC, never proposed by name
+            _device("bose_mac", name="Bose Kitchen", macs=("00:00:5e:00:53:99",)),
+            _device("router_side", name="Arlo-Avant", router_client=True),
+            _device("off", name="Apple TV Salon", disabled=True),
+        ],
+        trackers=[
+            _tracker("00:00:5e:00:53:21", "192.0.2.21", "Apple TV"),
+            _tracker("00:00:5e:00:53:22", "192.0.2.22", "Arlo-Avant"),
+            _tracker("00:00:5e:00:53:23", "192.0.2.23", "airplay-bose"),
+            _tracker("00:00:5e:00:53:24", "192.0.2.24", "Example-Phone"),
+            _tracker("00:00:5e:00:53:25", "192.0.2.25", "airplay-bose"),
+        ],
+        overrides={"00:00:5e:00:53:25": {"device_id": None, "label": "Guest speaker"}},
+    )
+    table = build_table(snap)
+
+    def first(mac: str) -> tuple[str, str, float] | None:
+        proposals = table.by_mac[mac]["proposals"]
+        if not proposals:
+            return None
+        return proposals[0]["device_id"], proposals[0]["reason"], proposals[0]["score"]
+
+    assert first("00:00:5e:00:53:21") == ("appletv", "name", pytest.approx(0.83, abs=0.01))
+    assert first("00:00:5e:00:53:22") == ("arlo", "name", 1.0)  # manufacturer + name
+    assert first("00:00:5e:00:53:23") == ("bose", "name", 1.0)
+    assert first("00:00:5e:00:53:24") is None
+    assert first("00:00:5e:00:53:25") is None  # labelled
+    proposed = {p["device_id"] for r in table.rows for p in r["proposals"]}
+    assert proposed.isdisjoint({"bose_mac", "router_side", "off"})
+    assert summarize(table)["proposals"] == 3
+    # A tracker renamed by the user is compared too
+    renamed = build_table(
+        Snapshot(
+            devices=[_device("tv", name="Salon TV")],
+            trackers=[
+                TrackerInput(
+                    entity_id="device_tracker.x",
+                    platform="example_router",
+                    mac="00:00:5e:00:53:26",
+                    ip=None,
+                    hostname="android-1234",
+                    online=True,
+                    name="Salon TV",
+                )
+            ],
+        )
+    )
+    assert renamed.by_mac["00:00:5e:00:53:26"]["proposals"][0]["device_id"] == "tv"
+
+
+def test_candidates_are_proposed_first() -> None:
+    """Ambiguous hostname candidates come before name proposals."""
+    table = build_table(
+        Snapshot(
+            devices=[
+                _device("one", macs=("00:00:5e:00:53:51",)),
+                _device("two", bt_macs=("02:00:5e:00:53:51",)),
+            ],
+            trackers=[_tracker("00:00:5e:00:53:50", "192.0.2.50", "ESP_005351")],
+        )
+    )
+    proposals = table.by_mac["00:00:5e:00:53:50"]["proposals"]
+    assert {p["device_id"] for p in proposals} == {"one", "two"}
+    assert {p["reason"] for p in proposals} == {"candidate"}

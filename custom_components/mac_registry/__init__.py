@@ -17,13 +17,20 @@ from homeassistant.core import (
     callback,
 )
 from homeassistant.exceptions import ServiceValidationError
-from homeassistant.helpers import config_validation as cv, issue_registry as ir
+from homeassistant.helpers import (
+    config_validation as cv,
+    device_registry as dr,
+    issue_registry as ir,
+)
 from homeassistant.helpers.typing import ConfigType
 from homeassistant.util import dt as dt_util
 import probatio as vol
 
 from .const import (
+    ATTR_DEVICE_ID,
     ATTR_FORMAT,
+    ATTR_LABEL,
+    ATTR_MAC,
     ATTR_PATH,
     ATTR_QUERY,
     DOMAIN,
@@ -31,8 +38,10 @@ from .const import (
     ISSUE_DUPLICATES,
     ISSUE_ORPHANS,
     SERVICE_EXPORT,
+    SERVICE_LINK,
     SERVICE_LOOKUP,
     SERVICE_REFRESH,
+    SERVICE_UNLINK,
 )
 from .coordinator import MacRegistryConfigEntry, MacRegistryCoordinator
 from .export import (
@@ -42,6 +51,7 @@ from .export import (
     resolve_export_path,
     write_text,
 )
+from .matcher import normalize_mac
 from .store import MacRegistryStore
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
@@ -49,6 +59,14 @@ PLATFORMS: list[Platform] = [Platform.SENSOR]
 CONFIG_SCHEMA = cv.config_entry_only_config_schema(DOMAIN)
 
 LOOKUP_SCHEMA = vol.Schema({vol.Required(ATTR_QUERY): cv.string})
+LINK_SCHEMA = vol.Schema(
+    {
+        vol.Required(ATTR_MAC): cv.string,
+        vol.Optional(ATTR_DEVICE_ID): cv.string,
+        vol.Optional(ATTR_LABEL): cv.string,
+    }
+)
+UNLINK_SCHEMA = vol.Schema({vol.Required(ATTR_MAC): cv.string})
 EXPORT_SCHEMA = vol.Schema(
     {
         vol.Optional(ATTR_PATH): cv.string,
@@ -179,6 +197,36 @@ def _async_register_services(hass: HomeAssistant) -> None:
         supports_response=SupportsResponse.ONLY,
     )
     hass.services.async_register(DOMAIN, SERVICE_REFRESH, async_refresh)
+
+    def _mac(call: ServiceCall) -> str:
+        if (mac := normalize_mac(call.data[ATTR_MAC])) is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="invalid_mac",
+                translation_placeholders={"mac": str(call.data[ATTR_MAC])},
+            )
+        return mac
+
+    async def async_link(call: ServiceCall) -> None:
+        coordinator = _require_coordinator(hass)
+        mac = _mac(call)
+        device_id = call.data.get(ATTR_DEVICE_ID) or None
+        label = (call.data.get(ATTR_LABEL) or "").strip() or None
+        if device_id is None and label is None:
+            raise ServiceValidationError(translation_domain=DOMAIN, translation_key="link_empty")
+        if device_id is not None and dr.async_get(hass).async_get(device_id) is None:
+            raise ServiceValidationError(
+                translation_domain=DOMAIN,
+                translation_key="unknown_device",
+                translation_placeholders={"device_id": device_id},
+            )
+        await coordinator.async_link(mac, device_id, label)
+
+    async def async_unlink(call: ServiceCall) -> None:
+        await _require_coordinator(hass).async_unlink(_mac(call))
+
+    hass.services.async_register(DOMAIN, SERVICE_LINK, async_link, schema=LINK_SCHEMA)
+    hass.services.async_register(DOMAIN, SERVICE_UNLINK, async_unlink, schema=UNLINK_SCHEMA)
 
 
 # ----------------------------------------------------------------------

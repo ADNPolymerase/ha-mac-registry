@@ -198,6 +198,7 @@ class MacRegistryCoordinator(DataUpdateCoordinator[Table]):
                     online=state.state == STATE_HOME,
                     connection=str(connection) if connection is not None else None,
                     device_id=reg_entry.device_id if reg_entry else None,
+                    name=state.name or None,
                 )
             )
         self.router_platforms = platforms
@@ -356,14 +357,15 @@ class MacRegistryCoordinator(DataUpdateCoordinator[Table]):
                 self.hass,
                 DOMAIN,
                 ISSUE_ORPHANS,
-                is_fixable=False,
+                is_fixable=True,
                 is_persistent=False,
                 severity=ir.IssueSeverity.WARNING,
                 translation_key=ISSUE_ORPHANS,
                 translation_placeholders={
                     "count": str(len(orphans)),
+                    "proposals": str(sum(1 for row in orphans if row["proposals"])),
                     "days": str(ORPHAN_MIN_DAYS),
-                    "macs": _issue_list(
+                    "macs": issue_list(
                         f"{row['mac']} ({row['hostname'] or row['ip'] or '?'})" for row in orphans
                     ),
                 },
@@ -382,7 +384,7 @@ class MacRegistryCoordinator(DataUpdateCoordinator[Table]):
                 translation_key=ISSUE_DUPLICATES,
                 translation_placeholders={
                     "count": str(len(table.duplicates)),
-                    "macs": _issue_list(
+                    "macs": issue_list(
                         f"{dup['mac']}: "
                         + ", ".join(
                             f"{dev['device_name']} ({dev['integration']})" for dev in dup["devices"]
@@ -403,12 +405,24 @@ class MacRegistryCoordinator(DataUpdateCoordinator[Table]):
             await self.async_refresh()
         return self.data if self.data is not None else Table()
 
+    async def async_link(self, mac: str, device_id: str | None, label: str | None) -> None:
+        """Store a manual link (device or label) and rebuild the table."""
+        self.store.set_override(mac, device_id, label)
+        await self.async_refresh()
+
+    async def async_unlink(self, mac: str) -> bool:
+        """Remove a manual link and rebuild the table."""
+        removed = self.store.remove_override(mac)
+        if removed:
+            await self.async_refresh()
+        return removed
+
     async def async_lookup(self, query: str) -> dict[str, Any]:
         """Resolve a MAC, IP, hostname or log line."""
         return lookup(await self.async_ensure_data(), query)
 
 
-def _issue_list(lines: Any) -> str:
+def issue_list(lines: Any) -> str:
     items = list(lines)
     shown = [f"- {line}" for line in items[:ISSUE_LIST_LIMIT]]
     if len(items) > ISSUE_LIST_LIMIT:

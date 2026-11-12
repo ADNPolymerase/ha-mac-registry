@@ -95,6 +95,9 @@
           },
           "duplicates": {
             "name": "Duplicated MACs"
+          },
+          "proposals": {
+            "name": "Proposals"
           }
         }
       }
@@ -136,12 +139,59 @@
     "refresh": {
       "name": "Refresh",
       "description": "Rebuilds the table now."
+    },
+    "link": {
+      "name": "Link",
+      "description": "Links a MAC to a Home Assistant device, or gives it a free label. Stored in MAC Registry only; nothing else in Home Assistant is changed.",
+      "fields": {
+        "mac": {
+          "name": "MAC address",
+          "description": "Any format: 00-00-5E-00-53-01, 00:00:5e:00:53:01, 00005e005301."
+        },
+        "device_id": {
+          "name": "Device",
+          "description": "Device to link the MAC to."
+        },
+        "label": {
+          "name": "Label",
+          "description": "Free label for a MAC with no Home Assistant device (phone, computer...)."
+        }
+      }
+    },
+    "unlink": {
+      "name": "Unlink",
+      "description": "Removes the manual link of a MAC.",
+      "fields": {
+        "mac": {
+          "name": "MAC address",
+          "description": "MAC whose manual link is removed."
+        }
+      }
     }
   },
   "issues": {
     "orphan_macs": {
       "title": "{count} MAC(s) on your network without a Home Assistant device",
-      "description": "These MACs have been seen by your router on at least {days} different days but are linked to no device:\n\n{macs}\n\nIf they are expected (phone, guest, computer), give them a label in the MAC Registry options (Add a manual link) to remove them from this list."
+      "fix_flow": {
+        "step": {
+          "links": {
+            "title": "Link or label the orphan MACs",
+            "description": "{orphans} MAC(s) seen by your router on at least {days} different days are linked to no device:\n\n{macs}\n\n{proposals} proposal(s) found by name. Nothing is selected by default; your choices are stored in MAC Registry only, nothing else in Home Assistant changes.",
+            "data": {
+              "link": "Accept these proposals",
+              "known": "No Home Assistant device (label them with their name)"
+            },
+            "data_description": {
+              "link": "The MAC is linked to the device in MAC Registry; nothing else in Home Assistant changes.",
+              "known": "A label removes the MAC from this list. Proposals accepted above win over this list."
+            }
+          }
+        },
+        "abort": {
+          "not_loaded": "MAC Registry is not loaded.",
+          "no_orphans": "There is no orphan MAC left."
+        }
+      }
     },
     "duplicate_macs": {
       "title": "{count} MAC(s) declared twice by the same integration",
@@ -163,6 +213,15 @@
     },
     "path_no_directory": {
       "message": "The folder of {path} does not exist."
+    },
+    "invalid_mac": {
+      "message": "{mac} is not a valid MAC address."
+    },
+    "link_empty": {
+      "message": "Give a device or a label."
+    },
+    "unknown_device": {
+      "message": "The device {device_id} does not exist."
     }
   }
 }

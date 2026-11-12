@@ -30,6 +30,7 @@ CSV_COLUMNS = (
     "device_id",
     "entities",
     "linked_devices",
+    "proposals",
 )
 
 

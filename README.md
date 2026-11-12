@@ -62,9 +62,18 @@ Rules:
 - From config entries only `data["host"]`, `data["ip_address"]` and `unique_id` are read. Nothing else is read, logged or exposed (passwords included).
 - DHCP is read through the public `homeassistant.components.dhcp.async_discovered_service_info` helper and disabled automatically when unavailable. Zeroconf has no equivalent public API and is not used.
 
+## Proposals
+
+A MAC seen by the router but linked to no device gets up to three proposed devices in its `proposals` list:
+
+- the ambiguous candidates found by hostname or IP;
+- the devices whose name looks like the client's name in the router (hostname, or the tracker's name if you renamed it). Names are compared word by word, without accents, separators or filler words such as `airplay`, and the manufacturer counts: `Arlo-Avant` matches the device `Avant` made by Arlo.
+
+Only devices that declare no network MAC are proposed; the others are already linked by their MAC. Nothing is linked without your approval: accept proposals from the repair below, with the `mac_registry.link` action, or in the options.
+
 ## Sensor
 
-`sensor.mac_registry_summary` holds the number of known MACs. Its attributes give `matched`, `router_linked` (router side linked to an integration's device), `orphans` (seen by the router, no Home Assistant device), `unseen_devices` (device MACs never seen by the router, Bluetooth and Zigbee excluded), `random`, `duplicates`, `by_confidence`, `dhcp_source`, plus short lists (`orphan_list`, `unseen_device_list`, `duplicate_list`). Attributes stay below 16 kB and the lists are excluded from the recorder.
+`sensor.mac_registry_summary` holds the number of known MACs. Its attributes give `matched`, `proposals` (orphans with a proposed device), `router_linked` (router side linked to an integration's device), `orphans` (seen by the router, no Home Assistant device), `unseen_devices` (device MACs never seen by the router, Bluetooth and Zigbee excluded), `random`, `duplicates`, `by_confidence`, `dhcp_source`, plus short lists (`orphan_list`, `unseen_device_list`, `duplicate_list`). Attributes stay below 16 kB and the lists are excluded from the recorder.
 
 ## Actions
 
@@ -101,6 +110,21 @@ data:
 action: mac_registry.refresh
 ```
 
+```yaml
+action: mac_registry.link
+data:
+  mac: "00:00:5e:00:53:41"
+  device_id: 0123456789abcdef0123456789abcdef   # or: label: "Office laptop"
+```
+
+```yaml
+action: mac_registry.unlink
+data:
+  mac: "00:00:5e:00:53:41"
+```
+
+`link` and `unlink` store the link in MAC Registry only; nothing else in Home Assistant changes.
+
 ## Events
 
 - `mac_registry_new_mac`: a MAC never seen before (none on the very first pass, to avoid a burst at installation).
@@ -136,7 +160,7 @@ actions:
 
 ## Repairs
 
-- One grouped issue for non-random orphan MACs seen on at least 3 different days. A label removes a MAC from it.
+- One grouped issue for non-random orphan MACs seen on at least 3 different days. Open it to fix it in one screen: tick the proposals to accept, and the MACs with no Home Assistant device to label them with their name.
 - One grouped issue when several devices of the same integration declare the same MAC.
 
 These issues are informative: MAC Registry changes nothing.

@@ -22,3 +22,26 @@ export:
             - markdown
           translation_key: export_format
 refresh:
+link:
+  fields:
+    mac:
+      required: true
+      example: "00:00:5e:00:53:41"
+      selector:
+        text:
+    device_id:
+      required: false
+      selector:
+        device:
+    label:
+      required: false
+      example: "Office laptop"
+      selector:
+        text:
+unlink:
+  fields:
+    mac:
+      required: true
+      example: "00:00:5e:00:53:41"
+      selector:
+        text:
