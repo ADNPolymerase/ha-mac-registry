@@ -428,3 +428,70 @@ async def test_service_without_entry(hass: HomeAssistant) -> None:
     assert await hass.config_entries.async_unload(entry.entry_id)
     with pytest.raises(ServiceValidationError):
         await _lookup(hass, "192.0.2.1")
+
+
+async def test_tplink_247_client_devices(hass: HomeAssistant) -> None:
+    """tplink_router 2.47+ gives every client a device, sometimes with a Blocked switch.
+
+    Those devices are the router side, not a match; mesh nodes, which carry an
+    identifier of the router integration, are real devices.
+    """
+    sc = await async_setup_scenario(hass)
+    router = sc.entries["tplink_router"]
+    dev_reg = dr.async_get(hass)
+    ent_reg = er.async_get(hass)
+    # Orphan client: device from the tracker's DeviceInfo (MAC only) + Blocked switch
+    device = dev_reg.async_get_or_create(
+        config_entry_id=router.entry_id,
+        connections={(dr.CONNECTION_NETWORK_MAC, "00:00:5e:00:53:41")},
+        name="Example-Laptop",
+    )
+    ent_reg.async_update_entity("device_tracker.example_laptop", device_id=device.id)
+    ent_reg.async_get_or_create(
+        "switch",
+        "tplink_router",
+        "laptop_blocked",
+        suggested_object_id="example_laptop_blocked",
+        config_entry=router,
+        device_id=device.id,
+        disabled_by=er.RegistryEntryDisabler.INTEGRATION,
+    )
+    # Mesh satellite: identifiers of the router integration
+    node = dev_reg.async_get_or_create(
+        config_entry_id=router.entry_id,
+        identifiers={("tplink_router", "00-00-5E-00-53-B0")},
+        connections={(dr.CONNECTION_NETWORK_MAC, "00:00:5e:00:53:b0")},
+        name="Example Satellite",
+    )
+    ent = ent_reg.async_get_or_create(
+        "device_tracker",
+        "tplink_router",
+        "node",
+        suggested_object_id="example_satellite",
+        config_entry=router,
+        device_id=node.id,
+    )
+    hass.states.async_set(
+        ent.entity_id,
+        "home",
+        router_attrs("00:00:5e:00:53:b0", "192.0.2.2", "Example Satellite", is_main_router=False),
+    )
+    await hass.async_block_till_done()
+    entry = await async_setup_integration(hass)
+    table = entry.runtime_data.data
+
+    laptop = table.by_mac["00:00:5e:00:53:41"]
+    assert laptop["confidence"] == "unmatched"
+    assert laptop["device_id"] is None
+    assert laptop["router_device_id"] == device.id
+    assert laptop["tracker"] == "device_tracker.example_laptop"
+
+    ac = table.by_mac["00:00:5e:00:53:a1"]  # router-side device with a Blocked switch
+    assert (ac["device_name"], ac["integration"], ac["duplicate"]) == ("Example AC", "gree", False)
+
+    satellite = table.by_mac["00:00:5e:00:53:b0"]
+    assert (satellite["confidence"], satellite["device_name"]) == (
+        "tracker+registry",
+        "Example Satellite",
+    )
+    assert entry.runtime_data.summary["orphans"] == 2  # laptop + random phone

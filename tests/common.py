@@ -126,15 +126,33 @@ def add_tracker(
 
 
 def add_router_device(
-    hass: HomeAssistant, sc: Scenario, mac: str, name: str, tracker: str | None = None
+    hass: HomeAssistant,
+    sc: Scenario,
+    mac: str,
+    name: str,
+    tracker: str | None = None,
+    blocked_switch: bool = False,
 ) -> str:
-    """Add the router-side device of a client, with a stateless tracker or none."""
+    """Add the router-side device of a client, with a stateless tracker or none.
+
+    tplink_router 2.47+ can also put a "Blocked" switch, disabled by default, on it.
+    """
     router = sc.entries["tplink_router"]
     device = dr.async_get(hass).async_get_or_create(
         config_entry_id=router.entry_id,
         connections={(dr.CONNECTION_NETWORK_MAC, mac)},
         name=name,
     )
+    if blocked_switch:
+        er.async_get(hass).async_get_or_create(
+            "switch",
+            "tplink_router",
+            f"{mac}_blocked",
+            suggested_object_id=f"{name}_blocked",
+            config_entry=router,
+            device_id=device.id,
+            disabled_by=er.RegistryEntryDisabler.INTEGRATION,
+        )
     if tracker:
         entity = er.async_get(hass).async_get_or_create(
             "device_tracker",
@@ -281,7 +299,9 @@ async def async_setup_scenario(hass: HomeAssistant) -> Scenario:
         connections={(dr.CONNECTION_NETWORK_MAC, "00:00:5e:00:53:a1")},
         entities=("climate.example_ac",),
     )
-    add_router_device(hass, sc, "00:00:5e:00:53:a1", "Example AC", tracker="example_ac")
+    add_router_device(
+        hass, sc, "00:00:5e:00:53:a1", "Example AC", tracker="example_ac", blocked_switch=True
+    )
     wol = add_entry(hass, sc, "wake_on_lan")
     add_device(
         hass,

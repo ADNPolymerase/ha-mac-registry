@@ -250,12 +250,15 @@ class MacRegistryCoordinator(DataUpdateCoordinator[Table]):
                     bt_macs=tuple(bt_macs),
                     entities=tuple(sorted(device_entities)),
                     disabled=device.disabled,
-                    # Since Home Assistant 2026.10 a router integration registers
-                    # its own device, with the same MAC, for each client another
-                    # integration knows. It only carries device trackers (or
-                    # nothing when the tracker is gone), unlike the router itself.
+                    # A router integration registers its own device for its clients
+                    # (Home Assistant 2026.10+, every client with tplink_router 2.47+),
+                    # described by the client's MAC alone, with trackers and sometimes a
+                    # per-client switch. The router itself and its mesh nodes carry
+                    # identifiers of their integration.
                     router_client=domain in router_domains
-                    and all(eid.startswith(f"{TRACKER_DOMAIN}.") for eid in device_entities),
+                    and not any(
+                        identifier_domain == domain for identifier_domain, _ in device.identifiers
+                    ),
                 )
             )
 
