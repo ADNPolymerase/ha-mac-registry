@@ -1,5 +1,11 @@
 # Changelog
 
+## 0.2.1 - 2026-11-20
+
+### Fixed
+
+- **tplink_router 2.47+: every client was taken for a real device.** That version gives each client tracker a device of its own, described by the client's MAC, and may add a "Blocked" switch to it, disabled by default. MAC Registry recognised a router-side device only when it held nothing but trackers, so these devices counted as matches: orphan MACs looked linked to their own router device, and their proposals and repair disappeared. A device of a router integration is now on the router side when it carries no identifier of that integration; the router itself and its mesh nodes, which do, stay real devices.
+
 ## 0.2.0 - 2026-11-11
 
 ### Added
