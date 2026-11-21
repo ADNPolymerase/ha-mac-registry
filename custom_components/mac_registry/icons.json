@@ -21,6 +21,9 @@
     },
     "unlink": {
       "service": "mdi:link-variant-off"
+    },
+    "revert_written": {
+      "service": "mdi:undo-variant"
     }
   }
 }
