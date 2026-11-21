@@ -6,7 +6,9 @@
 
 - **Fewer wrong proposals.** On a real network two thirds of the name proposals pointed to the wrong device. Proposals now:
   - skip service devices (an integration such as Spook or Uptime Kuma, a Hue zone, a Marketplace repository), which were proposed for `HomeAssistant-Pi`, `HomePod-Kitchen` or `Netatmo`;
-  - need a word that tells devices apart. Product, brand and kind words alone (`iPhone`, `MacBookPro`, `Switch`) only propose a device when the names are equal or when it is the only device that matches, so two iPhones are no longer proposed for a client named `iPhone`, nor Meross plugs named `Switch 1` for a Nintendo `Switch`;
+  - skip the parts of a device that is already linked by its MAC, such as the outlets `Switch 1` and `Switch 2` of a power strip;
+  - need a word that tells devices apart. Product, brand and kind words alone (`iPhone`, `MacBookPro`, `Switch`), even in equal names, only propose a device when it is the only one that matches and no other client goes by the same name: two iPhones are no longer proposed for a client named `iPhone`, and four clients called `MacBookPro`, which may be several laptops, get no guess;
+  - compare one name inside another on whole words only: `Switch` no longer matches a `SwitchBot` air conditioner;
   - score lower when the client name states a kind or brand the device does not have (`iPhone-Alice` and a bedside clock named `Alice`, `Meross-Smart-Switch` and a Nintendo `Switch`);
   - drop the devices that score clearly below the best one (a `Kitchen` lamp next to `HomePod Kitchen`).
 

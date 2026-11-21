@@ -330,6 +330,8 @@ def test_dhcp_source_and_lookup() -> None:
         ("Apple TV", "Apple TV Salon", 0.8, 0.9),  # one name inside the other
         ("Example-Laptop", "Example Fan", 0.0, 0.34),  # one common word only
         ("TV", "Apple TV", 0.5, 0.5),  # too short to count as contained
+        ("Switch", "SwitchBot Bureau", 0.0, 0.0),  # inside a word does not count
+        ("HomeAssistant Pi5", "Home Assistant", 0.9, 0.95),  # whole words joined
     ],
 )
 def test_name_score(left: str, right: str, minimum: float, maximum: float) -> None:
@@ -407,8 +409,15 @@ def test_name_proposals_need_a_distinctive_word() -> None:
                     "phone_b", name="iPhone 15 de Bob", manufacturer="Apple", model="iPhone15,3"
                 ),
                 _device("console", name="Switch ", manufacturer="Nintendo", model="Switch"),
-                _device("plug_1", name="Switch 1", manufacturer="Meross", model="mss620"),
-                _device("plug_2", name="Switch 2", manufacturer="Meross", model="mss620"),
+                # A power strip linked by its MAC, and its two outlets
+                _device(
+                    "strip",
+                    name="Outdoor plug",
+                    manufacturer="Meross",
+                    macs=("00:00:5e:00:53:3f",),
+                ),
+                _device("plug_1", name="Switch 1", manufacturer="Meross", via_device_id="strip"),
+                _device("plug_2", name="Switch 2", manufacturer="Meross", via_device_id="strip"),
                 _device("clock", name="Alice", manufacturer="Example Clocks", model="Clock"),
                 _device(
                     "laptop",
@@ -433,10 +442,44 @@ def test_name_proposals_need_a_distinctive_word() -> None:
 
     assert proposed("00:00:5e:00:53:31") == []  # two iPhones, nothing tells them apart
     assert proposed("00:00:5e:00:53:32") == ["phone_a"]  # not the clock named Alice
-    assert proposed("00:00:5e:00:53:33") == ["console"]  # equal name, the plugs dropped
+    assert proposed("00:00:5e:00:53:33") == ["console"]  # the outlets belong to the strip
     assert proposed("00:00:5e:00:53:34") == []  # Meross, not the Nintendo Switch
     assert proposed("00:00:5e:00:53:35") == ["laptop"]  # the only MacBook
     assert proposed("00:00:5e:00:53:36") == ["clock"]  # no kind stated, the name wins
+
+
+def test_generic_name_shared_by_several_clients() -> None:
+    """Several clients called MacBookPro may be several laptops: none is guessed."""
+    devices = [
+        _device("laptop", name="MacBook Pro de Bob", manufacturer="Apple", model="MacBookPro16,1"),
+        _device("phone", name="iPhone de Bob", manufacturer="Apple", model="iPhone16,2"),
+        _device("plug_1", name="Switch 1", manufacturer="Meross"),
+        _device("plug_2", name="Switch 2", manufacturer="Meross"),
+        _device("console", name="Switch", manufacturer="Example Games"),
+    ]
+    table = build_table(
+        Snapshot(
+            devices=devices,
+            trackers=[
+                _tracker("00:00:5e:00:53:61", "192.0.2.61", "MacBookPro"),
+                _tracker("00:00:5e:00:53:62", "192.0.2.62", "MacBookPro"),
+                _tracker("00:00:5e:00:53:63", "192.0.2.63", "iPhone-Bob-5G"),
+                _tracker("00:00:5e:00:53:64", "192.0.2.64", "iPhone-Bob-6G"),
+                _tracker("00:00:5e:00:53:65", "192.0.2.65", "Switch"),
+            ],
+        )
+    )
+
+    def proposed(mac: str) -> list[str]:
+        return [p["device_id"] for p in table.by_mac[mac]["proposals"]]
+
+    assert proposed("00:00:5e:00:53:61") == []
+    assert proposed("00:00:5e:00:53:62") == []
+    # A distinctive word is enough, however many interfaces the phone has
+    assert proposed("00:00:5e:00:53:63") == ["phone"]
+    assert proposed("00:00:5e:00:53:64") == ["phone"]
+    # A console and two plugs called Switch: an equal name is not enough to choose
+    assert proposed("00:00:5e:00:53:65") == []
 
 
 def test_name_proposals_for_every_interface_of_a_phone() -> None:

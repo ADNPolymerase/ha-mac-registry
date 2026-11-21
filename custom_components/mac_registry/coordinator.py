@@ -252,6 +252,7 @@ class MacRegistryCoordinator(DataUpdateCoordinator[Table]):
                     disabled=device.disabled,
                     original_name=device.name,
                     service=device.entry_type is dr.DeviceEntryType.SERVICE,
+                    via_device_id=device.via_device_id,
                     # A router integration registers its own device for its clients
                     # (Home Assistant 2026.10+, every client with tplink_router 2.47+),
                     # described by the client's MAC alone, with trackers and sometimes a

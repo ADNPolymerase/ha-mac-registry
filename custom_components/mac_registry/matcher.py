@@ -6,7 +6,7 @@ plain snapshot in the event loop and :func:`build_table` runs in an executor.
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 import ipaddress
 import re
@@ -269,6 +269,7 @@ class DeviceInput:
     router_client: bool = False  # created by a router integration for a tracker
     original_name: str | None = None  # name given by the integration, before a rename
     service: bool = False  # entry_type service: an integration, a zone, a repository
+    via_device_id: str | None = None  # parent device, e.g. the strip of an outlet
 
 
 @dataclass(slots=True, frozen=True)
@@ -513,6 +514,24 @@ def name_tokens(value: Any) -> list[str]:
     return [t for t in re.split(r"[^a-z0-9]+", text) if t and t not in _NAME_STOPWORDS]
 
 
+def _contains_on_word_bounds(tokens: list[str], text: str) -> bool:
+    """Whether ``text`` is a run of whole words of ``tokens`` joined together.
+
+    ``homeassistant`` is in ``HomeAssistant Pi5`` and ``couloir`` in ``Homepod-Couloir``,
+    but ``switch`` is not in ``SwitchBot``.
+    """
+    joined = "".join(tokens)
+    bounds = {0}
+    for token in tokens:
+        bounds.add(max(bounds) + len(token))
+    start = joined.find(text)
+    while start != -1:
+        if start in bounds and start + len(text) in bounds:
+            return True
+        start = joined.find(text, start + 1)
+    return False
+
+
 def name_score(left: list[str], right: list[str]) -> float:
     """Similarity of two token lists, from 0 to 1.
 
@@ -525,9 +544,9 @@ def name_score(left: list[str], right: list[str]) -> float:
     a, b = "".join(left), "".join(right)
     if a == b:
         return 1.0
-    short, long_ = sorted((a, b), key=len)
+    (short, _), (long_, long_tokens) = sorted(((a, left), (b, right)), key=lambda x: len(x[0]))
     contain = 0.0
-    if len(short) >= NAME_CONTAIN_MIN_LENGTH and short in long_:
+    if len(short) >= NAME_CONTAIN_MIN_LENGTH and _contains_on_word_bounds(long_tokens, short):
         contain = 0.6 + 0.4 * len(short) / len(long_)
     common = set(left) & set(right)
     jaccard = len(common) / len(set(left) | set(right))
@@ -564,14 +583,14 @@ def _match_score(
 ) -> tuple[float, float]:
     """Scores of a client name against a device: (strong, weak).
 
-    A strong match is equal names or one with a distinctive word in common; a weak
-    one shares product, brand or kind words only. A client name that states a kind
+    A strong match has a distinctive word in common; a weak one shares product,
+    brand or kind words only, even when the names are equal (``Switch``). A client name that states a kind
     or brand of device (``iPhone``, ``Meross``) the device does not have scores lower.
     """
     strong = weak = 0.0
     for dn in device_names:
         score = name_score(src, dn)
-        if score >= 1.0 or name_score(_distinctive(src), _distinctive(dn)) > 0.0:
+        if name_score(_distinctive(src), _distinctive(dn)) > 0.0:
             strong = max(strong, score)
         else:
             weak = max(weak, score)
@@ -581,13 +600,16 @@ def _match_score(
 
 
 def _name_proposals(
-    names: list[str | None], devices: list[tuple[DeviceInput, list[list[str]]]]
+    names: list[str | None],
+    devices: list[tuple[DeviceInput, list[list[str]]]],
+    shared_name: bool = False,
 ) -> list[tuple[DeviceInput, float]]:
     """Devices whose name looks like one of the given names, best first.
 
     A match on product or brand words alone (``Switch``, ``MacBookPro``) is only
-    proposed when no device matches better and it is the only such device; the
-    proposals clearly below the best one are dropped.
+    proposed when no device matches better, it is the only such device and no other
+    client goes by the same name (``shared_name``): several laptops may all call
+    themselves ``MacBookPro``. The proposals clearly below the best one are dropped.
     """
     sources = [tokens for value in names if (tokens := name_tokens(value))]
     if not sources:
@@ -603,7 +625,7 @@ def _name_proposals(
             strong.append((device, best_strong))
         elif best_weak >= NAME_PROPOSAL_MIN_SCORE:
             weak.append((device, best_weak))
-    scored = strong or (weak if len(weak) == 1 else [])
+    scored = strong or (weak if len(weak) == 1 and not shared_name else [])
     if scored:
         top = max(score for _, score in scored)
         scored = [item for item in scored if item[1] >= top - NAME_PROPOSAL_MARGIN]
@@ -638,12 +660,19 @@ def build_table(snap: Snapshot) -> Table:
 
     # Devices a name can be proposed for: real devices that do not declare a
     # network MAC (those are linked by MAC already)
+    # nor the parts of a device that declares one (the outlets of a power strip)
+    client_names = Counter(
+        key
+        for tracker in snap.trackers
+        if (key := "".join(name_tokens(tracker.hostname or tracker.name)))
+    )
     name_candidates = [
         (device, tokens)
         for device in snap.devices
         if not device.router_client
         and not device.service
         and not device.macs
+        and not (device.via_device_id in devices_by_id and devices_by_id[device.via_device_id].macs)
         and device.domain != DOMAIN
         and not device.disabled
         and (tokens := _device_name_tokens(device))
@@ -785,7 +814,9 @@ def build_table(snap: Snapshot) -> Table:
             proposals.extend(
                 {**_device_ref(d), "reason": "name", "score": score}
                 for d, score in _name_proposals(
-                    [hostname, tracker.name if tracker else None], name_candidates
+                    [hostname, tracker.name if tracker else None],
+                    name_candidates,
+                    shared_name=client_names["".join(name_tokens(hostname))] > 1,
                 )
                 if d.device_id not in known
             )
