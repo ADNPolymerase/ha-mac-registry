@@ -21,7 +21,7 @@
 
 Home Assistant logs only speak MAC, IP or hostname. MAC Registry builds and maintains one table linking every MAC to its IP, hostname, router `device_tracker`, Home Assistant device (name, integration, manufacturer, model) and entities. Paste a log line and it tells you which device it is.
 
-- **Read-only**: nothing is renamed, disabled or removed.
+- **Read-only by default**: nothing is renamed, disabled or removed. Writing an accepted link's MAC to its device is an option, off by default, recorded and reversible.
 - **No network traffic**: no scan, no ping. It only reads what Home Assistant already knows.
 - **Persistent**: per-MAC history (first seen, last seen, last 5 IPs) that survives restarts and DHCP changes.
 
@@ -75,7 +75,7 @@ Only devices that declare no network MAC are proposed (the others are already li
 
 ## Sensor
 
-`sensor.mac_registry_summary` holds the number of known MACs. Its attributes give `matched`, `proposals` (orphans with a proposed device), `router_linked` (router side linked to an integration's device), `orphans` (seen by the router, no Home Assistant device), `unseen_devices` (device MACs never seen by the router, Bluetooth and Zigbee excluded), `random`, `duplicates`, `by_confidence`, `dhcp_source`, plus short lists (`orphan_list`, `unseen_device_list`, `duplicate_list`). Attributes stay below 16 kB and the lists are excluded from the recorder.
+`sensor.mac_registry_summary` holds the number of known MACs. Its attributes give `matched`, `proposals` (orphans with a proposed device), `router_linked` (router side linked to an integration's device), `orphans` (seen by the router, no Home Assistant device), `unseen_devices` (device MACs never seen by the router, Bluetooth and Zigbee excluded), `random`, `duplicates`, `by_confidence`, `dhcp_source`, `written` (MACs written to devices), `written_lost`, plus short lists (`orphan_list`, `unseen_device_list`, `duplicate_list`). Attributes stay below 16 kB and the lists are excluded from the recorder.
 
 ## Actions
 
@@ -125,7 +125,23 @@ data:
   mac: "00:00:5e:00:53:41"
 ```
 
-`link` and `unlink` store the link in MAC Registry only; nothing else in Home Assistant changes.
+`link` and `unlink` store the link in MAC Registry. With `write_to_registry: true`, or when writing to the device is on in the options, `link` also adds the MAC to the device (see below); `unlink` takes it back off.
+
+```yaml
+action: mac_registry.revert_written
+```
+
+`revert_written` removes from their devices every MAC MAC Registry added, keeps the links, and returns `removed`.
+
+## Writing the MAC to the device (optional)
+
+Off by default. Turn on **Write accepted links to the device** in the options to add the MAC to the device in the device registry when you accept a link (repair, options, `mac_registry.link`). A device that declares the MAC of a client can then be found by MAC, for instance by a router card that links each client to its device.
+
+- Only a MAC the device does not declare yet is added, and every addition is recorded in `.storage/mac_registry`. Only recorded additions are ever removed: by removing or moving the link, with `mac_registry.revert_written`, or automatically when MAC Registry is removed.
+- Refused, nothing changes: Bluetooth MACs, service devices (an integration, a zone, a repository), devices of a router integration, and a MAC another device of the same integration already declares. The action reports the reason; the repair and the options keep the link and log it.
+- Home Assistant looks devices up per integration: adding a MAC to a device of one integration cannot make another integration take that device over.
+- If the device's integration later replaces its connections and drops the MAC, it is counted in `written_lost` (sensor, diagnostics) and not written again.
+- Home Assistant 2026.11 does not attach router trackers to the device of another integration, even when both declare the same MAC: this changes what MAC Registry and the cards that read the device registry see, not the tracker's own device.
 
 ## Events
 
@@ -156,7 +172,8 @@ actions:
   - safety refresh interval (15 min by default; the table also refreshes on registry and tracker changes, with a 10 s debounce);
   - router integrations to use (empty = every `source_type: router` tracker);
   - ignore random MACs (`x2`, `x6`, `xA`, `xE`);
-  - use the DHCP cache.
+  - use the DHCP cache;
+  - write accepted links to the device (off by default, see above).
 - **Add a manual link**: MAC to a device, or a free label. Links are stored in `.storage/mac_registry`, not in the browser.
 - **Remove manual links**.
 
@@ -165,7 +182,7 @@ actions:
 - One grouped issue for non-random orphan MACs seen on at least 3 different days. Open it to fix it in one screen: tick the proposals to accept, and the MACs with no Home Assistant device to label them with their name.
 - One grouped issue when several devices of the same integration declare the same MAC.
 
-These issues are informative: MAC Registry changes nothing.
+These issues are informative: MAC Registry changes nothing unless writing to the device is on.
 
 ## Diagnostics
 

@@ -6,6 +6,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigFlow, ConfigFlowResult, OptionsFlow
 from homeassistant.core import callback
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import device_registry as dr, selector
 import probatio as vol
 
@@ -14,9 +15,11 @@ from .const import (
     CONF_ROUTER_INTEGRATIONS,
     CONF_SCAN_INTERVAL,
     CONF_USE_DHCP,
+    CONF_WRITE_CONNECTIONS,
     DEFAULT_IGNORE_RANDOM,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_USE_DHCP,
+    DEFAULT_WRITE_CONNECTIONS,
     DOMAIN,
     MAX_SCAN_INTERVAL,
     MIN_SCAN_INTERVAL,
@@ -30,6 +33,7 @@ DEFAULT_OPTIONS: dict[str, Any] = {
     CONF_ROUTER_INTEGRATIONS: [],
     CONF_IGNORE_RANDOM: DEFAULT_IGNORE_RANDOM,
     CONF_USE_DHCP: DEFAULT_USE_DHCP,
+    CONF_WRITE_CONNECTIONS: DEFAULT_WRITE_CONNECTIONS,
 }
 
 CONF_MAC = "mac"
@@ -112,6 +116,9 @@ class MacRegistryOptionsFlow(OptionsFlow):
                 vol.Required(
                     CONF_USE_DHCP, default=options[CONF_USE_DHCP]
                 ): selector.BooleanSelector(),
+                vol.Required(
+                    CONF_WRITE_CONNECTIONS, default=options[CONF_WRITE_CONNECTIONS]
+                ): selector.BooleanSelector(),
             }
         )
         return self.async_show_form(step_id="settings", data_schema=schema)
@@ -123,6 +130,7 @@ class MacRegistryOptionsFlow(OptionsFlow):
         if (coordinator := self._coordinator()) is None:
             return self.async_abort(reason="not_loaded")
         errors: dict[str, str] = {}
+        placeholders: dict[str, str] = {"reason": ""}
         if user_input is not None:
             mac = normalize_mac(user_input.get(CONF_MAC))
             device_id = user_input.get(CONF_DEVICE_ID) or None
@@ -134,9 +142,14 @@ class MacRegistryOptionsFlow(OptionsFlow):
             elif device_id is not None and dr.async_get(self.hass).async_get(device_id) is None:
                 errors[CONF_DEVICE_ID] = "unknown_device"
             else:
-                coordinator.store.set_override(mac, device_id, label)
-                await coordinator.async_refresh()
-                return self.async_create_entry(data=dict(self.config_entry.options))
+                try:
+                    coordinator.async_set_link(mac, device_id, label)
+                except ServiceValidationError as err:
+                    errors["base"] = "write_refused"
+                    placeholders["reason"] = str(err)
+                else:
+                    await coordinator.async_refresh()
+                    return self.async_create_entry(data=dict(self.config_entry.options))
 
         schema = vol.Schema(
             {
@@ -151,6 +164,7 @@ class MacRegistryOptionsFlow(OptionsFlow):
             step_id="add_override",
             data_schema=self.add_suggested_values_to_schema(schema, user_input or {}),
             errors=errors,
+            description_placeholders=placeholders,
         )
 
     async def async_step_remove_override(
@@ -164,8 +178,7 @@ class MacRegistryOptionsFlow(OptionsFlow):
             return self.async_abort(reason="no_overrides")
         if user_input is not None:
             for mac in user_input.get(CONF_REMOVE, []):
-                coordinator.store.remove_override(mac)
-            await coordinator.async_refresh()
+                await coordinator.async_unlink(mac)
             return self.async_create_entry(data=dict(self.config_entry.options))
 
         dev_reg = dr.async_get(self.hass)

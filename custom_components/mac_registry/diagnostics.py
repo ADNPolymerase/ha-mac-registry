@@ -69,5 +69,10 @@ async def async_get_config_entry_diagnostics(
             {"device_id": bool(value.get("device_id")), "label": bool(value.get("label"))}
             for value in coordinator.store.overrides.values()
         ],
+        "write_connections": coordinator.write_enabled,
+        "written_count": len(coordinator.store.written),
+        "written_lost": [
+            {"device_exists": lost.device_exists} for lost in coordinator.lost_written
+        ],
         "rows": _redact(rows),
     }

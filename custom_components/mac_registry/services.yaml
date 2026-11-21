@@ -38,6 +38,10 @@ link:
       example: "Office laptop"
       selector:
         text:
+    write_to_registry:
+      required: false
+      selector:
+        boolean:
 unlink:
   fields:
     mac:
@@ -45,3 +49,4 @@ unlink:
       example: "00:00:5e:00:53:41"
       selector:
         text:
+revert_written:

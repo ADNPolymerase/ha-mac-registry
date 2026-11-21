@@ -72,6 +72,8 @@ class MacRegistrySummarySensor(CoordinatorEntity[MacRegistryCoordinator], Sensor
             "online": summary.get("online", 0),
             "duplicates": summary.get("duplicates", 0),
             "proposals": summary.get("proposals", 0),
+            "written": summary.get("written", 0),
+            "written_lost": summary.get("written_lost", 0),
             "by_confidence": summary.get("by_confidence", {}),
             "dhcp_source": "active" if coordinator.dhcp_available else "inactive",
             "last_built": coordinator.last_built,

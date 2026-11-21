@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "MAC Registry",
-        "description": "Construit une table en lecture seule qui relie MAC, IP et hostname à tes appareils et entités Home Assistant. Aucun scan réseau, rien n'est renommé ni modifié."
+        "description": "Construit une table qui relie MAC, IP et hostname à tes appareils et entités Home Assistant. Aucun scan réseau, rien n'est renommé ni supprimé ; les appareils ne sont modifiés que si tu actives l'écriture des liens acceptés dans l'appareil."
       }
     },
     "abort": {
@@ -26,13 +26,15 @@
           "scan_interval": "Intervalle de rafraîchissement de secours",
           "router_integrations": "Intégrations routeur à utiliser",
           "ignore_random": "Ignorer les MAC aléatoires (privées)",
-          "use_dhcp": "Utiliser le cache de découverte DHCP"
+          "use_dhcp": "Utiliser le cache de découverte DHCP",
+          "write_connections": "Écrire les liens acceptés dans l'appareil"
         },
         "data_description": {
           "scan_interval": "La table est aussi rafraîchie à chaque changement des registres et des trackers du routeur.",
           "router_integrations": "Laisse vide pour utiliser tous les device_tracker dont la source est un routeur.",
           "ignore_random": "MAC administrées localement (deuxième chiffre 2, 6, A ou E). Si elles sont gardées, elles sont signalées et ne déclenchent jamais de réparation.",
-          "use_dhcp": "Lit le cache que Home Assistant tient déjà. Désactivé automatiquement s'il n'est pas disponible."
+          "use_dhcp": "Lit le cache que Home Assistant tient déjà. Désactivé automatiquement s'il n'est pas disponible.",
+          "write_connections": "Désactivé par défaut. Quand un lien vers un appareil est accepté, la MAC est ajoutée à cet appareil dans le registre des appareils, s'il ne la déclare pas déjà. Chaque MAC ajoutée est notée et seules celles-là sont retirées : en supprimant le lien, avec l'action Annuler les MAC écrites, ou quand MAC Registry est supprimée."
         }
       },
       "add_override": {
@@ -57,7 +59,8 @@
     "error": {
       "invalid_mac": "Ce n'est pas une adresse MAC valide.",
       "override_empty": "Choisis un appareil ou saisis un libellé.",
-      "unknown_device": "Cet appareil n'existe pas."
+      "unknown_device": "Cet appareil n'existe pas.",
+      "write_refused": "Le lien n'a pas été enregistré : {reason}"
     },
     "abort": {
       "not_loaded": "MAC Registry doit être chargé pour modifier les associations manuelles.",
@@ -142,7 +145,7 @@
     },
     "link": {
       "name": "Associer",
-      "description": "Associe une MAC à un appareil Home Assistant, ou lui donne un libellé libre. Stocké dans MAC Registry uniquement ; rien d'autre n'est modifié dans Home Assistant.",
+      "description": "Associe une MAC à un appareil Home Assistant, ou lui donne un libellé libre. Stocké dans MAC Registry ; l'appareil lui-même n'est modifié que si l'écriture dans l'appareil est activée.",
       "fields": {
         "mac": {
           "name": "Adresse MAC",
@@ -155,6 +158,10 @@
         "label": {
           "name": "Libellé",
           "description": "Libellé libre pour une MAC sans appareil Home Assistant (téléphone, ordinateur…)."
+        },
+        "write_to_registry": {
+          "name": "Écrire dans l'appareil",
+          "description": "Ajoute aussi la MAC à l'appareil dans le registre des appareils, en la notant pour pouvoir la retirer. Par défaut, suit l'option."
         }
       }
     },
@@ -167,6 +174,10 @@
           "description": "MAC dont l'association manuelle est supprimée."
         }
       }
+    },
+    "revert_written": {
+      "name": "Annuler les MAC écrites",
+      "description": "Retire de leurs appareils toutes les MAC ajoutées par MAC Registry. Les liens eux-mêmes sont conservés."
     }
   },
   "issues": {
@@ -176,13 +187,13 @@
         "step": {
           "links": {
             "title": "Associer ou nommer les MAC orphelines",
-            "description": "{orphans} MAC vues par ton routeur au moins {days} jours différents ne sont reliées à aucun appareil :\n\n{macs}\n\n{proposals} proposition(s) trouvée(s) par le nom. Rien n'est coché par défaut ; tes choix sont stockés dans MAC Registry uniquement, rien d'autre ne change dans Home Assistant.",
+            "description": "{orphans} MAC vues par ton routeur au moins {days} jours différents ne sont reliées à aucun appareil :\n\n{macs}\n\n{proposals} proposition(s) trouvée(s) par le nom. Rien n'est coché par défaut ; tes choix sont stockés dans MAC Registry ; l'appareil lui-même n'est modifié que si l'écriture dans l'appareil est activée dans les options.",
             "data": {
               "link": "Accepter ces propositions",
               "known": "Sans appareil Home Assistant (leur donner leur nom comme libellé)"
             },
             "data_description": {
-              "link": "La MAC est associée à l'appareil dans MAC Registry ; rien d'autre ne change dans Home Assistant.",
+              "link": "La MAC est associée à l'appareil dans MAC Registry, et ajoutée à l'appareil lui-même si l'écriture dans l'appareil est activée dans les options.",
               "known": "Un libellé retire la MAC de cette liste. Les propositions acceptées au-dessus l'emportent sur cette liste."
             }
           }
@@ -222,6 +233,21 @@
     },
     "unknown_device": {
       "message": "L'appareil {device_id} n'existe pas."
+    },
+    "write_bluetooth": {
+      "message": "{mac} est une adresse Bluetooth ; seules les MAC réseau sont écrites."
+    },
+    "write_service": {
+      "message": "{device} est un service, pas un appareil réseau ; la MAC n'a pas été écrite."
+    },
+    "write_router": {
+      "message": "{device} appartient à une intégration de routeur ; la MAC n'a pas été écrite."
+    },
+    "write_no_integration": {
+      "message": "{device} n'a pas d'intégration ; la MAC n'a pas été écrite."
+    },
+    "write_collision": {
+      "message": "{mac} est déjà déclarée par {other}, un autre appareil de l'intégration de {device} ; la MAC n'a pas été écrite."
     }
   }
 }

@@ -41,7 +41,7 @@ class Observation:
 
 
 def _empty() -> dict[str, Any]:
-    return {"initialized": False, "macs": {}, "overrides": {}}
+    return {"initialized": False, "macs": {}, "overrides": {}, "written": {}}
 
 
 class MacRegistryStore:
@@ -55,8 +55,12 @@ class MacRegistryStore:
               "first_seen": iso, "last_seen": iso, "hostname": str | None,
               "ips": [most recent first], "days": ["2026-11-10", ...]}},
           "overrides": {"00:00:5e:00:53:02": {"device_id": str | None,
-                                              "label": str | None}}
+                                              "label": str | None}},
+          "written": {"00:00:5e:00:53:02": {"device_id": str, "at": iso}}
         }
+
+    ``written`` lists the MACs MAC Registry added to a device of the device
+    registry, so that they can be removed again, and only those.
 
     Only the event loop mutates the data; the matcher receives copies.
     """
@@ -80,12 +84,13 @@ class MacRegistryStore:
                     for raw, entry in loaded["macs"].items()
                     if (mac := normalize_mac(raw)) and isinstance(entry, dict)
                 }
-            if isinstance(loaded.get("overrides"), dict):
-                data["overrides"] = {
-                    mac: entry
-                    for raw, entry in loaded["overrides"].items()
-                    if (mac := normalize_mac(raw)) and isinstance(entry, dict)
-                }
+            for key in ("overrides", "written"):
+                if isinstance(loaded.get(key), dict):
+                    data[key] = {
+                        mac: entry
+                        for raw, entry in loaded[key].items()
+                        if (mac := normalize_mac(raw)) and isinstance(entry, dict)
+                    }
         self.data = data
 
     # ------------------------------------------------------------------
@@ -176,6 +181,31 @@ class MacRegistryStore:
         if removed:
             self.schedule_save()
         return removed
+
+    # ------------------------------------------------------------------
+    # MACs written to the device registry
+
+    @property
+    def written(self) -> dict[str, dict[str, Any]]:
+        """Return the MACs MAC Registry added to a device (read-only use)."""
+        return self.data["written"]
+
+    @callback
+    def add_written(self, mac: str, device_id: str, now: datetime | None = None) -> None:
+        """Record that the MAC was added to the device."""
+        self.data["written"][mac] = {
+            "device_id": device_id,
+            "at": (now or dt_util.now()).isoformat(),
+        }
+        self.schedule_save()
+
+    @callback
+    def remove_written(self, mac: str) -> dict[str, Any] | None:
+        """Forget a written MAC and return its record."""
+        record: dict[str, Any] | None = self.data["written"].pop(mac, None)
+        if record is not None:
+            self.schedule_save()
+        return record
 
     # ------------------------------------------------------------------
     # Saving

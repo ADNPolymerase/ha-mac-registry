@@ -1,5 +1,19 @@
 # Changelog
 
+## 0.3.0 - 2026-11-21
+
+### Added
+
+- **Optional: write an accepted link's MAC to its device.** Off by default. With **Write accepted links to the device** on in the options, accepting a link (repair, options, `mac_registry.link`) also adds the MAC to the device in the device registry, so the device can be found by MAC, for instance by a router card that links each client to its device. `mac_registry.link` gains `write_to_registry` to ask for it once.
+  - Only a MAC the device does not declare yet is added, and each addition is recorded in `.storage/mac_registry`. Only recorded additions are removed: when the link is removed or moved, with the new `mac_registry.revert_written` action, or automatically when MAC Registry is removed.
+  - Refused, nothing changes: Bluetooth MACs, service devices, devices of a router integration, and a MAC another device of the same integration declares. The action reports why; the repair and the options keep the link and log the refusal.
+  - A written MAC that the device's integration later drops is counted in `written_lost` and not written again.
+- `sensor.mac_registry_summary` gains `written` and `written_lost`; diagnostics show the option and the counts.
+
+### Changed
+
+- **MAC Registry is read-only by default**, no longer read-only in every case. Nothing is renamed, disabled or removed, and devices are only changed through the option above.
+
 ## 0.2.2 - 2026-11-21
 
 ### Fixed
