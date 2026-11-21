@@ -21,7 +21,7 @@
 
 Les logs de Home Assistant ne parlent qu'en MAC, en IP ou en hostname. MAC Registry construit et tient à jour une table unique qui relie chaque MAC à son IP, son hostname, son `device_tracker` routeur, l'appareil Home Assistant (nom, intégration, fabricant, modèle) et ses entités. Tu colles une ligne de log, il te dit de quel appareil il s'agit.
 
-- **Lecture seule** : rien n'est renommé, désactivé ni supprimé.
+- **Lecture seule par défaut** : rien n'est renommé, désactivé ni supprimé. Écrire la MAC d'un lien accepté dans son appareil est une option, désactivée par défaut, tracée et réversible.
 - **Aucun trafic réseau** : ni scan, ni ping. Il lit ce que Home Assistant sait déjà.
 - **Persistant** : historique par MAC (première vue, dernière vue, 5 dernières IP), qui survit aux redémarrages et aux changements DHCP.
 
@@ -75,7 +75,7 @@ Seuls les appareils qui ne déclarent pas de MAC réseau sont proposés (les aut
 
 ## Capteur
 
-`sensor.mac_registry_summary` : nombre de MAC connues. Les attributs donnent `matched`, `proposals` (orphelines avec un appareil proposé), `router_linked` (côté routeur relié à l'appareil d'une intégration), `orphans` (vues par le routeur sans appareil Home Assistant), `unseen_devices` (MAC d'appareils jamais vues par le routeur, Bluetooth et Zigbee exclus), `random`, `duplicates`, `by_confidence`, `dhcp_source`, ainsi que des listes courtes (`orphan_list`, `unseen_device_list`, `duplicate_list`). Les attributs restent sous 16 ko et les listes sont exclues du recorder.
+`sensor.mac_registry_summary` : nombre de MAC connues. Les attributs donnent `matched`, `proposals` (orphelines avec un appareil proposé), `router_linked` (côté routeur relié à l'appareil d'une intégration), `orphans` (vues par le routeur sans appareil Home Assistant), `unseen_devices` (MAC d'appareils jamais vues par le routeur, Bluetooth et Zigbee exclus), `random`, `duplicates`, `by_confidence`, `dhcp_source`, `written` (MAC écrites dans les appareils), `written_lost`, ainsi que des listes courtes (`orphan_list`, `unseen_device_list`, `duplicate_list`). Les attributs restent sous 16 ko et les listes sont exclues du recorder.
 
 ## Actions
 
@@ -125,7 +125,23 @@ data:
   mac: "00:00:5e:00:53:41"
 ```
 
-`link` et `unlink` stockent l'association dans MAC Registry uniquement ; rien d'autre ne change dans Home Assistant.
+`link` et `unlink` stockent l'association dans MAC Registry. Avec `write_to_registry: true`, ou si l'écriture dans l'appareil est activée dans les options, `link` ajoute aussi la MAC à l'appareil (voir plus bas) ; `unlink` la retire.
+
+```yaml
+action: mac_registry.revert_written
+```
+
+`revert_written` retire de leurs appareils toutes les MAC ajoutées par MAC Registry, garde les associations et renvoie `removed`.
+
+## Écrire la MAC dans l'appareil (optionnel)
+
+Désactivé par défaut. Active **Écrire les liens acceptés dans l'appareil** dans les options pour ajouter la MAC à l'appareil dans le registre des appareils quand tu acceptes une association (réparation, options, `mac_registry.link`). Un appareil qui déclare la MAC d'un client peut alors être retrouvé par sa MAC, par exemple par une carte de routeur qui relie chaque client à son appareil.
+
+- Seule une MAC que l'appareil ne déclare pas déjà est ajoutée, et chaque ajout est noté dans `.storage/mac_registry`. Seuls les ajouts notés sont retirés : en supprimant ou en déplaçant l'association, avec `mac_registry.revert_written`, ou automatiquement quand MAC Registry est supprimée.
+- Refusé, rien ne change : MAC Bluetooth, appareils de service (une intégration, une zone, un dépôt), appareils d'une intégration de routeur, et MAC déjà déclarée par un autre appareil de la même intégration. L'action indique la raison ; la réparation et les options gardent l'association et l'écrivent dans le journal.
+- Home Assistant cherche les appareils intégration par intégration : ajouter une MAC à l'appareil d'une intégration ne permet pas à une autre intégration de s'approprier cet appareil.
+- Si l'intégration de l'appareil remplace ensuite ses connexions et retire la MAC, elle est comptée dans `written_lost` (capteur, diagnostics) et n'est pas réécrite.
+- Home Assistant 2026.11 ne rattache pas les trackers routeur à l'appareil d'une autre intégration, même si les deux déclarent la même MAC : cela change ce que voient MAC Registry et les cartes qui lisent le registre des appareils, pas l'appareil du tracker.
 
 ## Événements
 
@@ -156,7 +172,8 @@ actions:
   - intervalle de secours (15 min par défaut ; la table se rafraîchit aussi sur les changements des registres et des trackers, avec un anti-rebond de 10 s) ;
   - intégrations routeur à utiliser (vide = tous les trackers `source_type: router`) ;
   - ignorer les MAC aléatoires (`x2`, `x6`, `xA`, `xE`) ;
-  - utiliser le cache DHCP.
+  - utiliser le cache DHCP ;
+  - écrire les liens acceptés dans l'appareil (désactivé par défaut, voir plus haut).
 - **Ajouter une association manuelle** : MAC vers un appareil, ou libellé libre. Les associations sont stockées dans `.storage/mac_registry`, pas dans le navigateur.
 - **Supprimer des associations manuelles**.
 
@@ -165,7 +182,7 @@ actions:
 - Une seule issue groupée pour les MAC orphelines non aléatoires vues au moins 3 jours distincts. Ouvre-la pour la corriger en un seul écran : coche les propositions à accepter, et les MAC sans appareil Home Assistant pour leur donner leur nom comme libellé.
 - Une issue groupée quand plusieurs appareils de la même intégration déclarent la même MAC.
 
-Ces issues sont informatives : MAC Registry ne modifie rien.
+Ces issues sont informatives : MAC Registry ne modifie rien, sauf si l'écriture dans l'appareil est activée.
 
 ## Diagnostics
 

@@ -1,6 +1,7 @@
 """MAC Registry: map MAC, IP and hostname to Home Assistant devices.
 
-Read-only towards the rest of Home Assistant and without any network traffic.
+Read-only towards the rest of Home Assistant unless the user turns on writing
+accepted links to the device registry, and without any network traffic.
 """
 
 from __future__ import annotations
@@ -33,6 +34,7 @@ from .const import (
     ATTR_MAC,
     ATTR_PATH,
     ATTR_QUERY,
+    ATTR_WRITE_TO_REGISTRY,
     DOMAIN,
     EXPORT_FORMATS,
     ISSUE_DUPLICATES,
@@ -41,6 +43,7 @@ from .const import (
     SERVICE_LINK,
     SERVICE_LOOKUP,
     SERVICE_REFRESH,
+    SERVICE_REVERT_WRITTEN,
     SERVICE_UNLINK,
 )
 from .coordinator import MacRegistryConfigEntry, MacRegistryCoordinator
@@ -52,6 +55,7 @@ from .export import (
     write_text,
 )
 from .matcher import normalize_mac
+from .registry_write import async_revert_all
 from .store import MacRegistryStore
 
 PLATFORMS: list[Platform] = [Platform.SENSOR]
@@ -64,6 +68,7 @@ LINK_SCHEMA = vol.Schema(
         vol.Required(ATTR_MAC): cv.string,
         vol.Optional(ATTR_DEVICE_ID): cv.string,
         vol.Optional(ATTR_LABEL): cv.string,
+        vol.Optional(ATTR_WRITE_TO_REGISTRY): cv.boolean,
     }
 )
 UNLINK_SCHEMA = vol.Schema({vol.Required(ATTR_MAC): cv.string})
@@ -105,8 +110,11 @@ async def async_unload_entry(hass: HomeAssistant, entry: MacRegistryConfigEntry)
 
 
 async def async_remove_entry(hass: HomeAssistant, entry: MacRegistryConfigEntry) -> None:
-    """Delete stored history and overrides when the integration is removed."""
-    await MacRegistryStore(hass).async_remove()
+    """Undo the MACs written to devices, then delete history and overrides."""
+    store = MacRegistryStore(hass)
+    await store.async_load()
+    async_revert_all(hass, store)
+    await store.async_remove()
     for issue_id in (ISSUE_ORPHANS, ISSUE_DUPLICATES):
         ir.async_delete_issue(hass, DOMAIN, issue_id)
 
@@ -220,13 +228,24 @@ def _async_register_services(hass: HomeAssistant) -> None:
                 translation_key="unknown_device",
                 translation_placeholders={"device_id": device_id},
             )
-        await coordinator.async_link(mac, device_id, label)
+        await coordinator.async_link(
+            mac, device_id, label, write=call.data.get(ATTR_WRITE_TO_REGISTRY)
+        )
 
     async def async_unlink(call: ServiceCall) -> None:
         await _require_coordinator(hass).async_unlink(_mac(call))
 
+    async def async_revert_written(call: ServiceCall) -> ServiceResponse:
+        return {"removed": await _require_coordinator(hass).async_revert_written()}
+
     hass.services.async_register(DOMAIN, SERVICE_LINK, async_link, schema=LINK_SCHEMA)
     hass.services.async_register(DOMAIN, SERVICE_UNLINK, async_unlink, schema=UNLINK_SCHEMA)
+    hass.services.async_register(
+        DOMAIN,
+        SERVICE_REVERT_WRITTEN,
+        async_revert_written,
+        supports_response=SupportsResponse.OPTIONAL,
+    )
 
 
 # ----------------------------------------------------------------------

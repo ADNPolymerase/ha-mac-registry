@@ -9,6 +9,7 @@ from typing import Any
 
 from homeassistant.config_entries import ConfigEntry
 from homeassistant.core import Event, EventStateChangedData, HomeAssistant, callback
+from homeassistant.exceptions import ServiceValidationError
 from homeassistant.helpers import (
     device_registry as dr,
     entity_registry as er,
@@ -29,11 +30,13 @@ from .const import (
     CONF_ROUTER_INTEGRATIONS,
     CONF_SCAN_INTERVAL,
     CONF_USE_DHCP,
+    CONF_WRITE_CONNECTIONS,
     CONFIG_ENTRY_HOST_KEYS,
     DEBOUNCE_COOLDOWN,
     DEFAULT_IGNORE_RANDOM,
     DEFAULT_SCAN_INTERVAL,
     DEFAULT_USE_DHCP,
+    DEFAULT_WRITE_CONNECTIONS,
     DOMAIN,
     EVENT_IP_CHANGED,
     EVENT_NEW_MAC,
@@ -60,6 +63,14 @@ from .matcher import (
     split_host,
     summarize,
 )
+from .registry_write import (
+    LostMac,
+    async_lost_written,
+    async_remove_written,
+    async_revert_all,
+    async_write_mac,
+    written_summary,
+)
 from .store import MacRegistryStore
 
 _LOGGER = logging.getLogger(__name__)
@@ -75,7 +86,10 @@ type MacRegistryConfigEntry = ConfigEntry[MacRegistryCoordinator]
 
 
 class MacRegistryCoordinator(DataUpdateCoordinator[Table]):
-    """Build and keep the MAC table up to date. Read-only towards HA."""
+    """Build and keep the MAC table up to date.
+
+    Read-only towards HA, except the optional and recorded MAC writes.
+    """
 
     config_entry: MacRegistryConfigEntry
 
@@ -100,6 +114,8 @@ class MacRegistryCoordinator(DataUpdateCoordinator[Table]):
         self.dhcp_available = False
         self.last_built: str | None = None
         self.router_platforms: set[str] = set()
+        self.router_domains: frozenset[str] = frozenset()
+        self.lost_written: list[LostMac] = []
         self._event_debouncer: Debouncer[Any] = Debouncer(
             hass,
             _LOGGER,
@@ -205,6 +221,7 @@ class MacRegistryCoordinator(DataUpdateCoordinator[Table]):
         # Integrations named in the options stay router integrations even when
         # none of their trackers has a state (router unreachable, restart...)
         router_domains = platforms | router_filter
+        self.router_domains = frozenset(router_domains)
 
         # Entities per device (child devices are folded into their parent)
         entities: dict[str, list[str]] = defaultdict(list)
@@ -342,6 +359,8 @@ class MacRegistryCoordinator(DataUpdateCoordinator[Table]):
         snapshot.history = self.store.history_copy()
         table = await self.hass.async_add_executor_job(build_table, snapshot)
         self.summary = summarize(table)
+        self.lost_written = async_lost_written(self.hass, self.store)
+        self.summary.update(written_summary(self.store, self.lost_written))
         self.last_built = dt_util.utcnow().isoformat()
 
         if not first_pass:
@@ -411,17 +430,78 @@ class MacRegistryCoordinator(DataUpdateCoordinator[Table]):
             await self.async_refresh()
         return self.data if self.data is not None else Table()
 
-    async def async_link(self, mac: str, device_id: str | None, label: str | None) -> None:
-        """Store a manual link (device or label) and rebuild the table."""
+    @property
+    def write_enabled(self) -> bool:
+        """Whether accepted links also add the MAC to the device (option)."""
+        return bool(
+            self.config_entry.options.get(CONF_WRITE_CONNECTIONS, DEFAULT_WRITE_CONNECTIONS)
+        )
+
+    @callback
+    def async_set_link(
+        self,
+        mac: str,
+        device_id: str | None,
+        label: str | None,
+        *,
+        write: bool | None = None,
+        strict: bool = True,
+    ) -> str | None:
+        """Store a manual link, and add the MAC to the device when writing is on.
+
+        ``write`` defaults to the option. A refused write raises when ``strict``
+        (nothing is stored then), otherwise the link is kept and the refusal logged.
+        Returns the write result (``written`` / ``already``) or None.
+        """
+        write = self.write_enabled if write is None else write
+        previous = self.store.written.get(mac)
+        if previous is not None and previous.get("device_id") != device_id:
+            async_remove_written(self.hass, self.store, mac)
+        result: str | None = None
+        if write and device_id:
+            row = self.data.by_mac.get(mac, {}) if self.data else {}
+            try:
+                result = async_write_mac(
+                    self.hass,
+                    self.store,
+                    mac,
+                    device_id,
+                    router_domains=self.router_domains,
+                    bluetooth=row.get("mac_type") == "bluetooth",
+                )
+            except ServiceValidationError as err:
+                if strict:
+                    raise
+                _LOGGER.warning("MAC not written to the device: %s", err)
         self.store.set_override(mac, device_id, label)
+        return result
+
+    async def async_link(
+        self,
+        mac: str,
+        device_id: str | None,
+        label: str | None,
+        *,
+        write: bool | None = None,
+    ) -> str | None:
+        """Store a manual link (device or label) and rebuild the table."""
+        result = self.async_set_link(mac, device_id, label, write=write)
         await self.async_refresh()
+        return result
 
     async def async_unlink(self, mac: str) -> bool:
-        """Remove a manual link and rebuild the table."""
+        """Remove a manual link, and the MAC MAC Registry added, then rebuild."""
+        unwritten = async_remove_written(self.hass, self.store, mac)
         removed = self.store.remove_override(mac)
-        if removed:
+        if removed or unwritten:
             await self.async_refresh()
         return removed
+
+    async def async_revert_written(self) -> int:
+        """Remove every MAC MAC Registry added to a device; links are kept."""
+        count = async_revert_all(self.hass, self.store)
+        await self.async_refresh()
+        return count
 
     async def async_lookup(self, query: str) -> dict[str, Any]:
         """Resolve a MAC, IP, hostname or log line."""

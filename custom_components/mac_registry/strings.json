@@ -3,7 +3,7 @@
     "step": {
       "user": {
         "title": "MAC Registry",
-        "description": "Builds a read-only table linking MAC, IP and hostname to your Home Assistant devices and entities. No network scan, nothing is renamed or modified."
+        "description": "Builds a table linking MAC, IP and hostname to your Home Assistant devices and entities. No network scan, nothing is renamed or removed; devices are only changed if you turn on writing accepted links to the device."
       }
     },
     "abort": {
@@ -26,13 +26,15 @@
           "scan_interval": "Safety refresh interval",
           "router_integrations": "Router integrations to use",
           "ignore_random": "Ignore random (private) MACs",
-          "use_dhcp": "Use the DHCP discovery cache"
+          "use_dhcp": "Use the DHCP discovery cache",
+          "write_connections": "Write accepted links to the device"
         },
         "data_description": {
           "scan_interval": "The table is also refreshed on registry and router tracker changes.",
           "router_integrations": "Leave empty to use every device tracker whose source is a router.",
           "ignore_random": "Locally administered MACs (second digit 2, 6, A or E). When kept they are flagged and never raise a repair.",
-          "use_dhcp": "Reads the cache Home Assistant already keeps. Disabled automatically if it is not available."
+          "use_dhcp": "Reads the cache Home Assistant already keeps. Disabled automatically if it is not available.",
+          "write_connections": "Off by default. When a link to a device is accepted, the MAC is added to that device in the device registry, if it does not declare it yet. Every MAC added is recorded and only those are removed again: by removing the link, with the Revert written MACs action, or when MAC Registry is removed."
         }
       },
       "add_override": {
@@ -57,7 +59,8 @@
     "error": {
       "invalid_mac": "This is not a valid MAC address.",
       "override_empty": "Choose a device or enter a label.",
-      "unknown_device": "This device does not exist."
+      "unknown_device": "This device does not exist.",
+      "write_refused": "The link was not saved: {reason}"
     },
     "abort": {
       "not_loaded": "MAC Registry must be loaded to edit manual links.",
@@ -142,7 +145,7 @@
     },
     "link": {
       "name": "Link",
-      "description": "Links a MAC to a Home Assistant device, or gives it a free label. Stored in MAC Registry only; nothing else in Home Assistant is changed.",
+      "description": "Links a MAC to a Home Assistant device, or gives it a free label. Stored in MAC Registry; the device itself is only changed when writing to the device is on.",
       "fields": {
         "mac": {
           "name": "MAC address",
@@ -155,6 +158,10 @@
         "label": {
           "name": "Label",
           "description": "Free label for a MAC with no Home Assistant device (phone, computer...)."
+        },
+        "write_to_registry": {
+          "name": "Write to the device",
+          "description": "Also add the MAC to the device in the device registry, recorded so it can be removed again. Defaults to the option."
         }
       }
     },
@@ -167,6 +174,10 @@
           "description": "MAC whose manual link is removed."
         }
       }
+    },
+    "revert_written": {
+      "name": "Revert written MACs",
+      "description": "Removes from their devices every MAC MAC Registry added. The links themselves are kept."
     }
   },
   "issues": {
@@ -176,13 +187,13 @@
         "step": {
           "links": {
             "title": "Link or label the orphan MACs",
-            "description": "{orphans} MAC(s) seen by your router on at least {days} different days are linked to no device:\n\n{macs}\n\n{proposals} proposal(s) found by name. Nothing is selected by default; your choices are stored in MAC Registry only, nothing else in Home Assistant changes.",
+            "description": "{orphans} MAC(s) seen by your router on at least {days} different days are linked to no device:\n\n{macs}\n\n{proposals} proposal(s) found by name. Nothing is selected by default; your choices are stored in MAC Registry; the device itself is only changed when writing to the device is on in the options.",
             "data": {
               "link": "Accept these proposals",
               "known": "No Home Assistant device (label them with their name)"
             },
             "data_description": {
-              "link": "The MAC is linked to the device in MAC Registry; nothing else in Home Assistant changes.",
+              "link": "The MAC is linked to the device in MAC Registry, and added to the device itself when writing to the device is on in the options.",
               "known": "A label removes the MAC from this list. Proposals accepted above win over this list."
             }
           }
@@ -222,6 +233,21 @@
     },
     "unknown_device": {
       "message": "The device {device_id} does not exist."
+    },
+    "write_bluetooth": {
+      "message": "{mac} is a Bluetooth address; only network MACs are written."
+    },
+    "write_service": {
+      "message": "{device} is a service, not a network device; the MAC was not written."
+    },
+    "write_router": {
+      "message": "{device} belongs to a router integration; the MAC was not written."
+    },
+    "write_no_integration": {
+      "message": "{device} has no integration; the MAC was not written."
+    },
+    "write_collision": {
+      "message": "{mac} is already declared by {other}, another device of the integration of {device}; the MAC was not written."
     }
   }
 }

@@ -48,12 +48,12 @@ class OrphanMacsRepairFlow(RepairsFlow):
                 mac, _, device_id = value.partition(_SEP)
                 if mac in linked or not device_id:
                     continue
-                coordinator.store.set_override(mac, device_id, None)
+                coordinator.async_set_link(mac, device_id, None, strict=False)
                 linked.add(mac)
             names = {r["mac"]: _client_name(r) for r in orphans}
             for mac in user_input.get(CONF_KNOWN, []):
                 if mac not in linked:
-                    coordinator.store.set_override(mac, None, names.get(mac, mac))
+                    coordinator.async_set_link(mac, None, names.get(mac, mac))
             await coordinator.async_refresh()
             return self.async_create_entry(data={})
 

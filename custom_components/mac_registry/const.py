@@ -17,12 +17,14 @@ CONF_SCAN_INTERVAL: Final = "scan_interval"
 CONF_ROUTER_INTEGRATIONS: Final = "router_integrations"
 CONF_IGNORE_RANDOM: Final = "ignore_random"
 CONF_USE_DHCP: Final = "use_dhcp"
+CONF_WRITE_CONNECTIONS: Final = "write_connections"
 
 DEFAULT_SCAN_INTERVAL: Final = 15  # minutes
 MIN_SCAN_INTERVAL: Final = 1
 MAX_SCAN_INTERVAL: Final = 1440
 DEFAULT_IGNORE_RANDOM: Final = False
 DEFAULT_USE_DHCP: Final = True
+DEFAULT_WRITE_CONNECTIONS: Final = False
 
 # Event-driven refresh debounce (seconds)
 DEBOUNCE_COOLDOWN: Final = 10.0
@@ -82,6 +84,8 @@ SERVICE_EXPORT: Final = "export"
 SERVICE_REFRESH: Final = "refresh"
 SERVICE_LINK: Final = "link"
 SERVICE_UNLINK: Final = "unlink"
+SERVICE_REVERT_WRITTEN: Final = "revert_written"
+ATTR_WRITE_TO_REGISTRY: Final = "write_to_registry"
 ATTR_MAC: Final = "mac"
 ATTR_DEVICE_ID: Final = "device_id"
 ATTR_LABEL: Final = "label"
