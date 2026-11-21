@@ -6,7 +6,7 @@ plain snapshot in the event loop and :func:`build_table` runs in an executor.
 
 from __future__ import annotations
 
-from collections import defaultdict
+from collections import Counter, defaultdict
 from dataclasses import dataclass, field
 import ipaddress
 import re
@@ -267,6 +267,9 @@ class DeviceInput:
     entities: tuple[str, ...] = ()
     disabled: bool = False
     router_client: bool = False  # created by a router integration for a tracker
+    original_name: str | None = None  # name given by the integration, before a rename
+    service: bool = False  # entry_type service: an integration, a zone, a repository
+    via_device_id: str | None = None  # parent device, e.g. the strip of an outlet
 
 
 @dataclass(slots=True, frozen=True)
@@ -364,12 +367,141 @@ def _same_integration_groups(devices: list[DeviceInput]) -> list[DeviceInput]:
 # Name proposals
 # --------------------------------------------------------------------------
 
-# Words that say nothing about which device it is
+# Words that say nothing about which device it is, and Wi-Fi band suffixes: a phone
+# can show up once per band (``iPhone-6G``, ``iPhone-5G``) or once per interface.
 _NAME_STOPWORDS = frozenset(
-    {"airplay", "the", "de", "du", "des", "la", "le", "les", "of", "wifi", "wlan", "lan", "eth"}
+    {
+        "airplay",
+        "the",
+        "de",
+        "du",
+        "des",
+        "la",
+        "le",
+        "les",
+        "of",
+        "wifi",
+        "wlan",
+        "lan",
+        "eth",
+        "2g",
+        "5g",
+        "6g",
+        "24g",
+        "ghz",
+        "2ghz",
+        "5ghz",
+        "6ghz",
+        "24ghz",
+    }
 )
+# Product, brand and kind words: shared alone, they do not tell two devices apart
+# (two iPhones, a Meross switch and a Nintendo Switch). A token made of one of them
+# followed by digits (``iphone16``, ``pi5`` is not one) counts as the word itself.
+_GENERIC_NAME_WORDS = frozenset(
+    {
+        "apple",
+        "iphone",
+        "ipad",
+        "ipod",
+        "imac",
+        "mac",
+        "macbook",
+        "macbookpro",
+        "macbookair",
+        "pro",
+        "air",
+        "mini",
+        "max",
+        "plus",
+        "ultra",
+        "homepod",
+        "appletv",
+        "tv",
+        "android",
+        "galaxy",
+        "samsung",
+        "pixel",
+        "google",
+        "nest",
+        "amazon",
+        "echo",
+        "smart",
+        "switch",
+        "plug",
+        "socket",
+        "outlet",
+        "light",
+        "lamp",
+        "bulb",
+        "strip",
+        "sensor",
+        "camera",
+        "cam",
+        "speaker",
+        "hub",
+        "bridge",
+        "gateway",
+        "router",
+        "repeater",
+        "extender",
+        "phone",
+        "tablet",
+        "laptop",
+        "desktop",
+        "pc",
+        "printer",
+        "home",
+        "homeassistant",
+        "assistant",
+        "device",
+        "netatmo",
+        "meross",
+        "shelly",
+        "tuya",
+        "sonoff",
+        "tplink",
+        "xiaomi",
+        "esp",
+    }
+)
+# Kinds and brands of device a client name can state. A device of another kind or
+# brand is a poor match even when the rest of the name agrees (``iPhone-Alice`` and a
+# bedside clock named ``Alice``, ``Meross-Smart-Switch`` and a Nintendo ``Switch``).
+_KIND_WORDS = (
+    "iphone",
+    "ipad",
+    "ipod",
+    "imac",
+    "macbook",
+    "homepod",
+    "appletv",
+    "android",
+    "galaxy",
+    "pixel",
+    "tablet",
+    "laptop",
+    "printer",
+    "meross",
+    "netatmo",
+    "shelly",
+    "tuya",
+    "sonoff",
+    "xiaomi",
+    "samsung",
+    "google",
+    "amazon",
+    "nintendo",
+    "playstation",
+)
+_GENERIC_TOKEN_RE = re.compile(
+    "(?:" + "|".join(sorted(_GENERIC_NAME_WORDS, key=len, reverse=True)) + r")\d*"
+)
+_BAND_24_RE = re.compile(r"2[.,]4\s*g(?:hz)?\b")
 NAME_PROPOSAL_MIN_SCORE = 0.6
 NAME_CONTAIN_MIN_LENGTH = 5
+NAME_PROPOSAL_MARGIN = 0.15
+KIND_MISMATCH_FACTOR = 0.7
 MAX_PROPOSALS = 3
 
 
@@ -378,7 +510,26 @@ def name_tokens(value: Any) -> list[str]:
     if not isinstance(value, str):
         return []
     text = unicodedata.normalize("NFKD", value).encode("ascii", "ignore").decode().lower()
+    text = _BAND_24_RE.sub(" 24ghz ", text)  # "2.4GHz" would split into "2" and "4ghz"
     return [t for t in re.split(r"[^a-z0-9]+", text) if t and t not in _NAME_STOPWORDS]
+
+
+def _contains_on_word_bounds(tokens: list[str], text: str) -> bool:
+    """Whether ``text`` is a run of whole words of ``tokens`` joined together.
+
+    ``homeassistant`` is in ``HomeAssistant Pi5`` and ``couloir`` in ``Homepod-Couloir``,
+    but ``switch`` is not in ``SwitchBot``.
+    """
+    joined = "".join(tokens)
+    bounds = {0}
+    for token in tokens:
+        bounds.add(max(bounds) + len(token))
+    start = joined.find(text)
+    while start != -1:
+        if start in bounds and start + len(text) in bounds:
+            return True
+        start = joined.find(text, start + 1)
+    return False
 
 
 def name_score(left: list[str], right: list[str]) -> float:
@@ -393,34 +544,91 @@ def name_score(left: list[str], right: list[str]) -> float:
     a, b = "".join(left), "".join(right)
     if a == b:
         return 1.0
-    short, long_ = sorted((a, b), key=len)
+    (short, _), (long_, long_tokens) = sorted(((a, left), (b, right)), key=lambda x: len(x[0]))
     contain = 0.0
-    if len(short) >= NAME_CONTAIN_MIN_LENGTH and short in long_:
+    if len(short) >= NAME_CONTAIN_MIN_LENGTH and _contains_on_word_bounds(long_tokens, short):
         contain = 0.6 + 0.4 * len(short) / len(long_)
     common = set(left) & set(right)
     jaccard = len(common) / len(set(left) | set(right))
     return round(max(contain, jaccard), 2)
 
 
+def _distinctive(tokens: list[str]) -> list[str]:
+    """Tokens that tell a device apart: no product, brand or kind word, no bare number."""
+    return [t for t in tokens if not t.isdigit() and not _GENERIC_TOKEN_RE.fullmatch(t)]
+
+
+def _kinds(tokens: list[str]) -> set[str]:
+    return {kind for kind in _KIND_WORDS for t in tokens if t.startswith(kind)}
+
+
 def _device_name_tokens(device: DeviceInput) -> list[list[str]]:
-    names = [name_tokens(device.name)]
-    if device.manufacturer:
-        names.append(name_tokens(f"{device.manufacturer} {device.name}"))
+    names: list[list[str]] = []
+    for value in dict.fromkeys(filter(None, (device.name, device.original_name))):
+        names.append(name_tokens(value))
+        if device.manufacturer:
+            names.append(name_tokens(f"{device.manufacturer} {value}"))
     return [n for n in names if n]
 
 
+def _device_kinds(device: DeviceInput) -> set[str]:
+    words = " ".join(
+        filter(None, (device.name, device.original_name, device.model, device.manufacturer))
+    )
+    return _kinds(name_tokens(words))
+
+
+def _match_score(
+    src: list[str], device_names: list[list[str]], kinds: set[str]
+) -> tuple[float, float]:
+    """Scores of a client name against a device: (strong, weak).
+
+    A strong match has a distinctive word in common; a weak one shares product,
+    brand or kind words only, even when the names are equal (``Switch``). A client name that states a kind
+    or brand of device (``iPhone``, ``Meross``) the device does not have scores lower.
+    """
+    strong = weak = 0.0
+    for dn in device_names:
+        score = name_score(src, dn)
+        if name_score(_distinctive(src), _distinctive(dn)) > 0.0:
+            strong = max(strong, score)
+        else:
+            weak = max(weak, score)
+    if (wanted := _kinds(src)) and not wanted & kinds:
+        strong, weak = (round(v * KIND_MISMATCH_FACTOR, 2) for v in (strong, weak))
+    return strong, weak
+
+
 def _name_proposals(
-    names: list[str | None], devices: list[tuple[DeviceInput, list[list[str]]]]
+    names: list[str | None],
+    devices: list[tuple[DeviceInput, list[list[str]]]],
+    shared_name: bool = False,
 ) -> list[tuple[DeviceInput, float]]:
-    """Devices whose name looks like one of the given names, best first."""
+    """Devices whose name looks like one of the given names, best first.
+
+    A match on product or brand words alone (``Switch``, ``MacBookPro``) is only
+    proposed when no device matches better, it is the only such device and no other
+    client goes by the same name (``shared_name``): several laptops may all call
+    themselves ``MacBookPro``. The proposals clearly below the best one are dropped.
+    """
     sources = [tokens for value in names if (tokens := name_tokens(value))]
     if not sources:
         return []
-    scored: list[tuple[DeviceInput, float]] = []
+    strong: list[tuple[DeviceInput, float]] = []
+    weak: list[tuple[DeviceInput, float]] = []
     for device, device_names in devices:
-        score = max(name_score(src, dn) for src in sources for dn in device_names)
-        if score >= NAME_PROPOSAL_MIN_SCORE:
-            scored.append((device, score))
+        kinds = _device_kinds(device)
+        scores = [_match_score(src, device_names, kinds) for src in sources]
+        best_strong = max(s for s, _ in scores)
+        best_weak = max(w for _, w in scores)
+        if best_strong >= NAME_PROPOSAL_MIN_SCORE:
+            strong.append((device, best_strong))
+        elif best_weak >= NAME_PROPOSAL_MIN_SCORE:
+            weak.append((device, best_weak))
+    scored = strong or (weak if len(weak) == 1 and not shared_name else [])
+    if scored:
+        top = max(score for _, score in scored)
+        scored = [item for item in scored if item[1] >= top - NAME_PROPOSAL_MARGIN]
     scored.sort(key=lambda item: (-item[1], item[0].name.lower(), item[0].device_id))
     return scored[:MAX_PROPOSALS]
 
@@ -452,11 +660,19 @@ def build_table(snap: Snapshot) -> Table:
 
     # Devices a name can be proposed for: real devices that do not declare a
     # network MAC (those are linked by MAC already)
+    # nor the parts of a device that declares one (the outlets of a power strip)
+    client_names = Counter(
+        key
+        for tracker in snap.trackers
+        if (key := "".join(name_tokens(tracker.hostname or tracker.name)))
+    )
     name_candidates = [
         (device, tokens)
         for device in snap.devices
         if not device.router_client
+        and not device.service
         and not device.macs
+        and not (device.via_device_id in devices_by_id and devices_by_id[device.via_device_id].macs)
         and device.domain != DOMAIN
         and not device.disabled
         and (tokens := _device_name_tokens(device))
@@ -598,7 +814,9 @@ def build_table(snap: Snapshot) -> Table:
             proposals.extend(
                 {**_device_ref(d), "reason": "name", "score": score}
                 for d, score in _name_proposals(
-                    [hostname, tracker.name if tracker else None], name_candidates
+                    [hostname, tracker.name if tracker else None],
+                    name_candidates,
+                    shared_name=client_names["".join(name_tokens(hostname))] > 1,
                 )
                 if d.device_id not in known
             )
