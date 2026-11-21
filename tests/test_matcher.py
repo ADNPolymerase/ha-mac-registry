@@ -395,6 +395,106 @@ def test_name_proposals() -> None:
     assert renamed.by_mac["00:00:5e:00:53:26"]["proposals"][0]["device_id"] == "tv"
 
 
+def test_name_proposals_need_a_distinctive_word() -> None:
+    """Product, brand and kind words alone do not pick a device among several."""
+    table = build_table(
+        Snapshot(
+            devices=[
+                _device(
+                    "phone_a", name="iPhone de Alice", manufacturer="Apple", model="iPhone16,2"
+                ),
+                _device(
+                    "phone_b", name="iPhone 15 de Bob", manufacturer="Apple", model="iPhone15,3"
+                ),
+                _device("console", name="Switch ", manufacturer="Nintendo", model="Switch"),
+                _device("plug_1", name="Switch 1", manufacturer="Meross", model="mss620"),
+                _device("plug_2", name="Switch 2", manufacturer="Meross", model="mss620"),
+                _device("clock", name="Alice", manufacturer="Example Clocks", model="Clock"),
+                _device(
+                    "laptop",
+                    name="MacBook Pro de Bob",
+                    manufacturer="Apple",
+                    model="MacBookPro16,1",
+                ),
+            ],
+            trackers=[
+                _tracker("00:00:5e:00:53:31", "192.0.2.31", "iPhone"),
+                _tracker("00:00:5e:00:53:32", "192.0.2.32", "iPhone-Alice"),
+                _tracker("00:00:5e:00:53:33", "192.0.2.33", "Switch"),
+                _tracker("00:00:5e:00:53:34", "192.0.2.34", "Meross_Smart_Switch"),
+                _tracker("00:00:5e:00:53:35", "192.0.2.35", "MacBookPro"),
+                _tracker("00:00:5e:00:53:36", "192.0.2.36", "Alice"),
+            ],
+        )
+    )
+
+    def proposed(mac: str) -> list[str]:
+        return [p["device_id"] for p in table.by_mac[mac]["proposals"]]
+
+    assert proposed("00:00:5e:00:53:31") == []  # two iPhones, nothing tells them apart
+    assert proposed("00:00:5e:00:53:32") == ["phone_a"]  # not the clock named Alice
+    assert proposed("00:00:5e:00:53:33") == ["console"]  # equal name, the plugs dropped
+    assert proposed("00:00:5e:00:53:34") == []  # Meross, not the Nintendo Switch
+    assert proposed("00:00:5e:00:53:35") == ["laptop"]  # the only MacBook
+    assert proposed("00:00:5e:00:53:36") == ["clock"]  # no kind stated, the name wins
+
+
+def test_name_proposals_for_every_interface_of_a_phone() -> None:
+    """A phone seen once per band or interface gets the same device for each MAC."""
+    table = build_table(
+        Snapshot(
+            devices=[
+                _device("phone", name="iPhone de Alice", manufacturer="Apple", model="iPhone16,2"),
+                _device("phone_old", name="iPhone 12 de Alice", manufacturer="Apple"),
+            ],
+            trackers=[
+                _tracker("00:00:5e:00:53:41", "192.0.2.41", "iPhone-Alice"),
+                _tracker("00:00:5e:00:53:42", "192.0.2.42", "iPhone-Alice-5G"),
+                _tracker("00:00:5e:00:53:43", "192.0.2.43", "iPhone-Alice-6G"),
+                _tracker("00:00:5e:00:53:44", "192.0.2.44", "iPhone Alice 2.4GHz"),
+            ],
+        )
+    )
+    for mac in ("41", "42", "43", "44"):
+        proposals = table.by_mac[f"00:00:5e:00:53:{mac}"]["proposals"]
+        # The older phone scores clearly lower and is dropped
+        assert [(p["device_id"], p["score"]) for p in proposals] == [("phone", 1.0)], mac
+
+
+def test_name_proposals_skip_services_and_read_the_original_name() -> None:
+    """Service devices are never proposed; a renamed device is found by its first name."""
+    table = build_table(
+        Snapshot(
+            devices=[
+                _device("zone", name="Kitchen", service=True),
+                _device("card", name="Example Card", service=True),
+                _device(
+                    "speaker", name="HomePod Kitchen", manufacturer="Apple", model="HomePod mini"
+                ),
+                _device("lamp", name="Kitchen", manufacturer="Example Lights"),
+                _device(
+                    "camera",
+                    name="Living room camera",
+                    original_name="Example-Welcome",
+                    manufacturer="Example",
+                ),
+            ],
+            trackers=[
+                _tracker("00:00:5e:00:53:51", "192.0.2.51", "HomePod-Kitchen"),
+                _tracker("00:00:5e:00:53:52", "192.0.2.52", "Example-Welcome-0a1b2c"),
+                _tracker("00:00:5e:00:53:53", "192.0.2.53", "Example-Card"),
+            ],
+        )
+    )
+
+    def proposed(mac: str) -> list[str]:
+        return [p["device_id"] for p in table.by_mac[mac]["proposals"]]
+
+    assert proposed("00:00:5e:00:53:51") == ["speaker"]  # the lamp scores clearly lower
+    assert proposed("00:00:5e:00:53:52") == ["camera"]
+    assert proposed("00:00:5e:00:53:53") == []
+
+
 def test_candidates_are_proposed_first() -> None:
     """Ambiguous hostname candidates come before name proposals."""
     table = build_table(

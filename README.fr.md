@@ -67,9 +67,11 @@ Règles :
 Une MAC vue par le routeur mais reliée à aucun appareil reçoit jusqu'à trois appareils proposés dans sa liste `proposals` :
 
 - les candidats ambigus trouvés par hostname ou IP ;
-- les appareils dont le nom ressemble au nom du client dans le routeur (hostname, ou nom du tracker si tu l'as renommé). Les noms sont comparés mot à mot, sans accents, séparateurs ni mots creux comme `airplay`, et le fabricant compte : `Arlo-Avant` correspond à l'appareil `Avant` fabriqué par Arlo.
+- les appareils dont le nom ressemble au nom du client dans le routeur (hostname, ou nom du tracker si tu l'as renommé). Les noms sont comparés mot à mot, sans accents, séparateurs ni mots creux comme `airplay`, et le fabricant compte : `Arlo-Avant` correspond à l'appareil `Avant` fabriqué par Arlo. Le nom d'origine de l'appareil compte aussi quand tu l'as renommé, et les suffixes de bande Wi-Fi (`-2G`, `-5G`, `-6G`, `2.4GHz`) sont ignorés : un téléphone vu une fois par bande ou par interface reçoit le même appareil pour chacune de ses MAC.
 
-Seuls les appareils qui ne déclarent pas de MAC réseau sont proposés ; les autres sont déjà reliés par leur MAC. Rien n'est associé sans ton accord : accepte les propositions depuis la réparation ci-dessous, avec l'action `mac_registry.link`, ou dans les options.
+Une correspondance de nom doit partager un mot qui distingue les appareils. Les mots de produit, de marque ou de type seuls (`iPhone`, `MacBookPro`, `Switch`, `Netatmo`) ne proposent un appareil que si les noms sont égaux ou s'il est le seul à correspondre. Un nom de client qui annonce un type ou une marque que l'appareil n'a pas (`iPhone-Alice` et une horloge nommée `Alice`, `Meross-Smart-Switch` et une `Switch` Nintendo) obtient un score plus bas, et les propositions nettement en dessous de la meilleure sont écartées.
+
+Seuls les appareils qui ne déclarent pas de MAC réseau sont proposés, et jamais les appareils de service (une intégration, une zone Hue, un dépôt du Marketplace) ; les autres sont déjà reliés par leur MAC. Rien n'est associé sans ton accord : accepte les propositions depuis la réparation ci-dessous, avec l'action `mac_registry.link`, ou dans les options.
 
 ## Capteur
 

@@ -67,9 +67,11 @@ Rules:
 A MAC seen by the router but linked to no device gets up to three proposed devices in its `proposals` list:
 
 - the ambiguous candidates found by hostname or IP;
-- the devices whose name looks like the client's name in the router (hostname, or the tracker's name if you renamed it). Names are compared word by word, without accents, separators or filler words such as `airplay`, and the manufacturer counts: `Arlo-Avant` matches the device `Avant` made by Arlo.
+- the devices whose name looks like the client's name in the router (hostname, or the tracker's name if you renamed it). Names are compared word by word, without accents, separators or filler words such as `airplay`, and the manufacturer counts: `Arlo-Avant` matches the device `Avant` made by Arlo. The device's original name counts too when you renamed it, and Wi-Fi band suffixes (`-2G`, `-5G`, `-6G`, `2.4GHz`) are ignored, so a phone seen once per band or per interface gets the same device for each of its MACs.
 
-Only devices that declare no network MAC are proposed; the others are already linked by their MAC. Nothing is linked without your approval: accept proposals from the repair below, with the `mac_registry.link` action, or in the options.
+A name match has to share a word that tells devices apart. Product, brand and kind words alone (`iPhone`, `MacBookPro`, `Switch`, `Netatmo`) only propose a device when the names are equal or when it is the only device that matches. A client name that states a kind or brand the device does not have (`iPhone-Alice` and a clock named `Alice`, `Meross-Smart-Switch` and a Nintendo `Switch`) scores lower, and proposals clearly below the best one are dropped.
+
+Only devices that declare no network MAC are proposed, and never service devices (an integration, a Hue zone, a Marketplace repository); the others are already linked by their MAC. Nothing is linked without your approval: accept proposals from the repair below, with the `mac_registry.link` action, or in the options.
 
 ## Sensor
 

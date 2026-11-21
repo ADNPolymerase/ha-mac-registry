@@ -69,6 +69,8 @@ def add_device(
     entities: tuple[str, ...] = (),
     manufacturer: str = "Example",
     model: str = "Model",
+    entry_type: dr.DeviceEntryType | None = None,
+    name_by_user: str | None = None,
 ) -> str:
     """Add a device and its entities."""
     dev_reg = dr.async_get(hass)
@@ -80,7 +82,10 @@ def add_device(
         name=name,
         manufacturer=manufacturer,
         model=model,
+        entry_type=entry_type,
     )
+    if name_by_user:
+        device = dev_reg.async_update_device(device.id, name_by_user=name_by_user) or device
     for entity_id in entities:
         domain, object_id = entity_id.split(".", 1)
         ent_reg.async_get_or_create(

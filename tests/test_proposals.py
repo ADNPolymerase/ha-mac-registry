@@ -8,7 +8,7 @@ from homeassistant.components.repairs import repairs_flow_manager
 from homeassistant.core import HomeAssistant
 from homeassistant.data_entry_flow import FlowResultType
 from homeassistant.exceptions import ServiceValidationError
-from homeassistant.helpers import issue_registry as ir
+from homeassistant.helpers import device_registry as dr, issue_registry as ir
 from homeassistant.setup import async_setup_component
 import pytest
 
@@ -56,6 +56,16 @@ async def _setup(hass: HomeAssistant, hass_storage: dict[str, Any]) -> Any:
     sc = await async_setup_scenario(hass)
     apple = add_entry(hass, sc, "apple_tv", host="192.0.2.150")
     add_device(hass, sc, "tv", apple, "Apple TV Salon", entities=("media_player.apple_tv",))
+    # A service device with the very name the router shows: never proposed
+    add_device(
+        hass,
+        sc,
+        "tv_service",
+        apple,
+        "Apple TV",
+        entities=("update.apple_tv_card",),
+        entry_type=dr.DeviceEntryType.SERVICE,
+    )
     arlo = add_entry(hass, sc, "arlo")
     add_device(hass, sc, "cam", arlo, "Avant", manufacturer="Arlo", entities=("camera.avant",))
     add_tracker(hass, sc, "apple_tv", TV_MAC, "192.0.2.151", "Apple TV")
@@ -73,6 +83,7 @@ async def test_proposals_are_exposed(hass: HomeAssistant, hass_storage: dict[str
     assert tv["device_id"] is None
     assert tv["proposals"][0]["device_id"] == sc.devices["tv"]
     assert tv["proposals"][0]["reason"] == "name"
+    assert sc.devices["tv_service"] not in {p["device_id"] for p in tv["proposals"]}
     assert table.by_mac[CAMERA_MAC]["proposals"][0]["device_name"] == "Avant"
     assert table.by_mac[LAPTOP_MAC]["proposals"] == []
 
